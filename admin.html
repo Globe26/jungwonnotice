@@ -127,12 +127,12 @@
     const db = getFirestore(app);
     const storage = getStorage(app);
 
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-storage.js";
+import { uploadBytes } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-storage.js";
 
-const storage = getStorage();
+const storage1 = getStorage();
 
 async function uploadImage(file, path) {
-  const storageRef = ref(storage, path);
+  const storageRef = ref(storage1, path);
   const snapshot = await uploadBytes(storageRef, file);
   const url = await getDownloadURL(snapshot.ref);
   return url;
@@ -279,4 +279,5 @@ async function uploadImage(file, path) {
   </script>
 </body>
 </html>
+
 
