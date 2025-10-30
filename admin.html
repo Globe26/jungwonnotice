@@ -127,15 +127,30 @@
     const db = getFirestore(app);
     const storage = getStorage(app);
 
-import { uploadBytes } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-storage.js";
+// 이건 Firestore에 직접 이미지 저장 (CORS 없음)
+async function uploadIfNeeded(file) {
+  if (!file) return null;
 
-const storage1 = getStorage();
+  // 1MB 이하로 압축 (품질 0.7)
+  const compressed = await new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const scale = Math.min(800 / img.width, 800 / img.height, 1);
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7)); // 압축된 Base64
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
 
-async function uploadImage(file, path) {
-  const storageRef = ref(storage1, path);
-  const snapshot = await uploadBytes(storageRef, file);
-  const url = await getDownloadURL(snapshot.ref);
-  return url;
+  return compressed;
 }
     // 로그인 게이트
     const gate = document.getElementById('gate');
@@ -168,8 +183,8 @@ async function uploadImage(file, path) {
       };
 
       if(category==='event')payload.eventDate=document.getElementById('eventDate').value;
-      payload.imageUrl=await uploadImage(image,'images');
-      payload.fileUrl=await uploadImage(file,'files');
+      payload.imageUrl=await uploadIfneeded(image,'images');
+      payload.fileUrl=await uploadIfneeded(file,'files');
 
       await addDoc(collection(db,'posts'),payload);
       btn.disabled=false;
@@ -279,6 +294,7 @@ async function uploadImage(file, path) {
   </script>
 </body>
 </html>
+
 
 
 
