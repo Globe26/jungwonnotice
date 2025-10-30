@@ -127,28 +127,16 @@
     const db = getFirestore(app);
     const storage = getStorage(app);
 
-    // ✅ CORS 안 터지는 Firebase 공식 업로드 함수
-    async function uploadIfNeeded(file, pathPrefix = "uploads") {
-      if (!file) return null;
-      return new Promise((resolve, reject) => {
-        const fileRef = ref(storage, `${pathPrefix}/${Date.now()}_${file.name}`);
-        const uploadTask = uploadBytesResumable(fileRef, file);
+import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-storage.js";
 
-        uploadTask.on(
-          "state_changed",
-          snapshot => {},
-          error => {
-            console.error("업로드 실패:", error);
-            reject(error);
-          },
-          async () => {
-            const url = await getDownloadURL(uploadTask.snapshot.ref);
-            resolve(url);
-          }
-        );
-      });
-    }
+const storage = getStorage();
 
+async function uploadImage(file, path) {
+  const storageRef = ref(storage, path);
+  const snapshot = await uploadBytes(storageRef, file);
+  const url = await getDownloadURL(snapshot.ref);
+  return url;
+}
     // 로그인 게이트
     const gate = document.getElementById('gate');
     const panel = document.getElementById('panel');
@@ -291,3 +279,4 @@
   </script>
 </body>
 </html>
+
