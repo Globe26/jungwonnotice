@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>관리자 패널</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="container">
+    <h1>관리자 패널</h1>
+    <a href="./index.html" class="btn">← 메인으로</a>
+  </header>
+
+  <main class="container">
+    <section id="gate">
+      <p>관리자 비밀번호를 입력하세요.</p>
+      <input id="adminPw" class="input" type="password" placeholder="비밀번호"/>
+      <button id="enterBtn" class="btn">입장</button>
+      <div id="gateMsg" class="error"></div>
+    </section>
+
+    <section id="panel" class="hidden">
+      <h2>반장 비밀번호 설정</h2>
+      <div class="grid g2">
+        <div>
+          <label class="label">반 선택</label>
+          <select id="classSelect" class="select">
+            <option value="1">1반</option>
+            <option value="2">2반</option>
+            <option value="3">3반</option>
+            <option value="4">4반</option>
+            <option value="5">5반</option>
+            <option value="6">6반</option>
+            <option value="7">7반</option>
+            <option value="8">8반</option>
+            <option value="9">9반</option>
+          </select>
+        </div>
+        <div>
+          <label class="label">해당 반 비밀번호</label>
+          <input id="classPw" class="input" type="text" placeholder="예: 1234" />
+        </div>
+      </div>
+      <button id="saveClassPw" class="btn">저장</button>
+      <div id="classPwMsg" class="muted"></div>
+
+      <hr/>
+
+      <h2>게시글 작성</h2>
+      <div class="row">
+        <label class="label">카테고리</label>
+        <select id="category" class="select">
+          <option value="general">전체 공지</option>
+          <option value="event">행사</option>
+          <option value="assessment">수행평가</option>
+          <option value="class_notice">반별 공지</option>
+        </select>
+      </div>
+
+      <div id="targetClassWrap" class="row hidden">
+        <label class="label">대상 반</label>
+        <select id="targetClass" class="select">
+          <option value="1">1반</option>
+          <option value="2">2반</option>
+          <option value="3">3반</option>
+          <option value="4">4반</option>
+          <option value="5">5반</option>
+          <option value="6">6반</option>
+          <option value="7">7반</option>
+          <option value="8">8반</option>
+          <option value="9">9반</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label class="label">제목</label>
+        <input id="title" class="input" type="text" />
+      </div>
+      <div class="row">
+        <label class="label">내용</label>
+        <textarea id="content" class="input" rows="5"></textarea>
+      </div>
+
+      <div id="eventWrap" class="row hidden">
+        <label class="label">행사일</label>
+        <input id="eventDate" class="input" type="date" />
+      </div>
+
+      <div id="assessmentWrap" class="hidden">
+        <div class="row">
+          <label class="label">과목</label>
+          <select id="subject" class="select">
+            <option>국어</option>
+            <option>수학</option>
+            <option>영어</option>
+            <option>통합사회</option>
+            <option>통합과학</option>
+            <option>한국사</option>
+            <option>기술가정</option>
+            <option>한문</option>
+            <option>미술</option>
+            <option>체육</option>
+            <option>과학탐구실험</option>
+            <option>기타</option>
+          </select>
+        </div>
+        <div class="row">
+          <label class="label">일정(차시)</label>
+          <div id="scheduleList"></div>
+          <button id="addSchedule" class="btn ghost">차시 추가</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <label class="label">사진(선택)</label>
+        <input id="image" type="file" accept="image/*" />
+      </div>
+      <div class="row">
+        <label class="label">파일(선택)</label>
+        <input id="file" type="file" />
+      </div>
+
+      <button id="publish" class="btn primary">게시</button>
+      <div id="pubMsg" class="muted"></div>
+    </section>
+    <section id="editSection" class="hidden">
+        <h2>게시글 수정</h2>
+        <input id="postId" class="input" placeholder="게시글 ID" />
+        <button id="loadPost" class="btn">불러오기</button>
+        <div id="loadMsg" class="muted"></div>
+    </section>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-analytics.js";
+    import { getFirestore, doc, setDoc, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
+    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-storage.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCjO0wwQQc8pDuQPurxVobABlKHAxDY2YA",
+      authDomain: "jungwonjd2-1c79f.firebaseapp.com",
+      projectId: "jungwonjd2-1c79f",
+      storageBucket: "jungwonjd2-1c79f.firebasestorage.app",
+      messagingSenderId: "962425903739",
+      appId: "1:962425903739:web:de0c905dc285f566d3a0de",
+      measurementId: "G-7LKGCZKMFW"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const analytics = getAnalytics(app);
+    const db = getFirestore(app);
+    const storage = getStorage(app);
+
+    // gate
+    const gate = document.getElementById('gate');
+    const panel = document.getElementById('panel');
+    const editSection = document.getElementById('editSection'); // 추가
+    const gateMsg = document.getElementById('gateMsg');
+    document.getElementById('enterBtn').addEventListener('click', ()=>{
+      const v = document.getElementById('adminPw').value;
+      if(v==='0922'){ gate.classList.add('hidden'); panel.classList.remove('hidden'); editSection.classList.remove('hidden'); }
+      else { gateMsg.textContent = '비밀번호가 올바르지 않습니다.'; }
+    });
+
+    // 반장 비번 저장
+    document.getElementById('saveClassPw').addEventListener('click', async ()=>{
+      const cls = document.getElementById('classSelect').value;
+      const pw = document.getElementById('classPw').value.trim();
+      if(!pw) return;
+      await setDoc(doc(db, 'classPasswords', cls), { password: pw });
+      document.getElementById('classPwMsg').textContent = `${cls}반 비밀번호 저장됨`;
+    });
+
+    // 카테고리 전환
+    const category = document.getElementById('category');
+    const targetClassWrap = document.getElementById('targetClassWrap');
+    const eventWrap = document.getElementById('eventWrap');
+    const assessmentWrap = document.getElementById('assessmentWrap');
+
+    function updateFormByCategory(){
+      const c = category.value;
+      targetClassWrap.classList.toggle('hidden', c!=="class_notice");
+      eventWrap.classList.toggle('hidden', c!=="event");
+      assessmentWrap.classList.toggle('hidden', c!=="assessment");
+    }
+    category.addEventListener('change', updateFormByCategory);
+    updateFormByCategory();
+
+    // 차시 목록
+    const scheduleList = document.getElementById('scheduleList');
+    let scheduleN = 1;
+
+    function renderScheduleItem(n, text=''){
+      const wrap = document.createElement('div');
+      wrap.className = 'row';
+      wrap.innerHTML = `
+        <div class="mono">${n}차시 :</div>
+        <input class="input flex1" data-n="${n}" placeholder="내용" value="${text}" />
+        <button class="btn ghost" data-remove="${n}">삭제</button>
+      `;
+      scheduleList.appendChild(wrap);
+      wrap.querySelector('[data-remove]').addEventListener('click', ()=>{
+        wrap.remove();
+      });
+    }
+
+    // 기본 1개 이상
+    renderScheduleItem(1);
+
+    document.getElementById('addSchedule').addEventListener('click', ()=>{
+      scheduleN += 1;
+      renderScheduleItem(scheduleN);
+    });
+
+    async function uploadIfNeeded(file, path){
+      if(!file) return null;
+      const r = ref(storage, path);
+      await uploadBytes(r, file);
+      return await getDownloadURL(r);
+    }
+
+    document.getElementById('publish').addEventListener('click', async ()=>{
+      const c = category.value;
+      const title = document.getElementById('title').value.trim();
+      const content = document.getElementById('content').value.trim();
+      if(!title){
+        document.getElementById('pubMsg').textContent = '제목은 필수입니다.';
+        return;
+      }
+      const imageFile = document.getElementById('image').files[0] || null;
+      const anyFile = document.getElementById('file').files[0] || null;
+
+      const payload = {
+        category: c,
+        targetClass: c==='class_notice' ? document.getElementById('targetClass').value : 'all',
+        title, content,
+        createdAt: serverTimestamp()
+      };
+
+      if(c==='event'){
+        payload.eventDate = (document.getElementById('eventDate').value || null);
+      }
+      if(c==='assessment'){
+        payload.subject = document.getElementById('subject').value;
+        const inputs = scheduleList.querySelectorAll('input[data-n]');
+        const schedules = [];
+        inputs.forEach(inp=>{
+          const n = Number(inp.dataset.n);
+          const text = inp.value.trim();
+          if(text) schedules.push({ n, text });
+        });
+        // 최소 1개 이상 보장
+        if(schedules.length===0) schedules.push({ n:1, text:'' });
+        payload.schedules = schedules;
+      }
+
+      // 우선 문서 만들고 postId 확보 → 파일 업로드 경로에 사용
+      const docRef = await addDoc(collection(db,'posts'), payload);
+      const postId = docRef.id;
+
+      // 업로드
+      const imgUrl = await uploadIfNeeded(imageFile, `images/${postId}/${imageFile?imageFile.name:''}`);
+      const fileUrl = await uploadIfNeeded(anyFile, `files/${postId}/${anyFile?anyFile.name:''}`);
+
+      if(imgUrl || fileUrl){
+        await setDoc(docRef, { imageUrl: imgUrl||null, fileUrl: fileUrl||null }, { merge:true });
+      }
+
+      document.getElementById('pubMsg').textContent = '게시 완료!';
+      // 폼 초기화 간단 처리
+      document.getElementById('title').value = '';
+      document.getElementById('content').value = '';
+      document.getElementById('image').value = '';
+      document.getElementById('file').value = '';
+      scheduleList.innerHTML = '';
+      scheduleN = 1; renderScheduleItem(1);
+    });
+    import { getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
+
+const postIdInput = document.getElementById('postId');
+const loadBtn = document.getElementById('loadPost');
+const loadMsg = document.getElementById('loadMsg');
+
+// 게시글 불러오기
+loadBtn.addEventListener('click', async ()=>{
+  const id = postIdInput.value.trim();
+  if(!id){ loadMsg.textContent = '게시글 ID를 입력하세요.'; return; }
+  const ref = doc(db, 'posts', id);
+  const snap = await getDoc(ref);
+  if(!snap.exists()){ loadMsg.textContent = '게시글을 찾을 수 없습니다.'; return; }
+
+  const d = snap.data();
+  document.getElementById('title').value = d.title || '';
+  document.getElementById('content').value = d.content || '';
+  category.value = d.category;
+  updateFormByCategory();
+  if(d.category==='event') document.getElementById('eventDate').value = d.eventDate || '';
+  if(d.category==='assessment'){
+    document.getElementById('subject').value = d.subject || '국어';
+    scheduleList.innerHTML = '';
+    (d.schedules||[]).forEach(sc=>renderScheduleItem(sc.n, sc.text));
+  }
+  loadMsg.textContent = '게시글 로드 완료. 수정 후 "게시(수정)" 버튼을 눌러주세요.';
+});
+
+// 게시 버튼 수정
+const publishBtn = document.getElementById('publish');
+publishBtn.textContent = '게시 / 수정';
+
+publishBtn.addEventListener('click', async ()=>{
+  const id = postIdInput.value.trim();
+  const isEdit = id !== '';
+
+  const title = document.getElementById('title').value.trim();
+  const content = document.getElementById('content').value.trim();
+  if(!title){ document.getElementById('pubMsg').textContent='제목은 필수입니다.'; return; }
+
+  const payload = {
+    title, content,
+    category: category.value,
+    updatedAt: serverTimestamp()
+  };
+
+  if(category.value==='event') payload.eventDate = document.getElementById('eventDate').value;
+  if(category.value==='assessment'){
+    const inputs = scheduleList.querySelectorAll('input[data-n]');
+    payload.schedules = Array.from(inputs).map(inp=>({ n:Number(inp.dataset.n), text:inp.value }));
+    payload.subject = document.getElementById('subject').value;
+  }
+
+  if(isEdit){
+    await updateDoc(doc(db,'posts',id), payload);
+    document.getElementById('pubMsg').textContent = '수정 완료!';
+  } else {
+    const ref = await addDoc(collection(db,'posts'), payload);
+    document.getElementById('pubMsg').textContent = `게시 완료 (ID: ${ref.id})`;
+  }
+});
+  </script>
+</body>
+</html>
