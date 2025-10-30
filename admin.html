@@ -214,12 +214,21 @@
       renderScheduleItem(scheduleN);
     });
 
-    async function uploadIfNeeded(file, path){
-      if(!file) return null;
-      const r = ref(storage, path);
-      await uploadBytes(r, file);
-      return await getDownloadURL(r);
-    }
+async function uploadIfNeeded(file, path) {
+  if (!file) return null;
+  try {
+    // ✅ fetch Blob으로 변환 후 업로드
+    const blob = file instanceof Blob ? file : new Blob([file], { type: file.type || 'application/octet-stream' });
+    const storageRef = ref(storage, path);
+    const snapshot = await uploadBytes(storageRef, blob, { contentType: file.type });
+    const url = await getDownloadURL(snapshot.ref);
+    return url;
+  } catch (err) {
+    console.error('파일 업로드 실패:', err);
+    alert('파일 업로드 중 오류가 발생했습니다.\nCORS 정책에 의해 차단될 수 있습니다.');
+    return null;
+  }
+}
 
     document.getElementById('publish').addEventListener('click', async ()=>{
       const c = category.value;
@@ -342,3 +351,4 @@ publishBtn.addEventListener('click', async ()=>{
 </body>
 
 </html>
+
