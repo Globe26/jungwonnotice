@@ -168,8 +168,8 @@ async function uploadImage(file, path) {
       };
 
       if(category==='event')payload.eventDate=document.getElementById('eventDate').value;
-      payload.imageUrl=await uploadIfNeeded(image,'images');
-      payload.fileUrl=await uploadIfNeeded(file,'files');
+      payload.imageUrl=await uploadImage(image,'images');
+      payload.fileUrl=await uploadImage(file,'files');
 
       await addDoc(collection(db,'posts'),payload);
       btn.disabled=false;
@@ -279,5 +279,6 @@ async function uploadImage(file, path) {
   </script>
 </body>
 </html>
+
 
 
