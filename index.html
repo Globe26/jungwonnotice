@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>중원고 1학년 공지 알리미</title>
   <link rel="stylesheet" href="./styles.css" />
+  <style>
+    .card {border:1px solid #ccc;border-radius:10px;padding:10px;margin-bottom:12px;}
+    .card img {max-width:100%;border-radius:8px;margin-top:8px;}
+    .btn.small{font-size:.85em;padding:4px 8px;margin-left:5px;}
+    .edit-box{border:1px solid #ccc;padding:8px;border-radius:6px;margin-top:8px;}
+    #newNoticeBox{border:1px solid #ddd;padding:10px;margin-bottom:10px;border-radius:8px;}
+  </style>
 </head>
 <body>
   <header class="container">
@@ -12,15 +19,9 @@
     <div class="row">
       <label for="classSelect" class="label">반 선택</label>
       <select id="classSelect" class="select">
-        <option value="1">1반</option>
-        <option value="2">2반</option>
-        <option value="3">3반</option>
-        <option value="4">4반</option>
-        <option value="5">5반</option>
-        <option value="6">6반</option>
-        <option value="7">7반</option>
-        <option value="8">8반</option>
-        <option value="9">9반</option>
+        <option value="1">1반</option><option value="2">2반</option><option value="3">3반</option>
+        <option value="4">4반</option><option value="5">5반</option><option value="6">6반</option>
+        <option value="7">7반</option><option value="8">8반</option><option value="9">9반</option>
       </select>
     </div>
   </header>
@@ -34,45 +35,13 @@
 
   <section class="container filters">
     <input id="searchInput" class="input" type="search" placeholder="제목+내용 검색" />
-
-    <div id="assessmentFilter" class="row hidden">
-      <label for="subjectSelect" class="label">과목</label>
-      <select id="subjectSelect" class="select">
-        <option value="all">전체</option>
-        <option>국어</option>
-        <option>수학</option>
-        <option>영어</option>
-        <option>통합사회</option>
-        <option>통합과학</option>
-        <option>한국사</option>
-        <option>기술가정</option>
-        <option>한문</option>
-        <option>미술</option>
-        <option>체육</option>
-        <option>과학탐구실험</option>
-        <option>기타</option>
-      </select>
-    </div>
   </section>
 
   <main class="container" id="list"></main>
 
-  <!-- 이미지 모달 -->
-  <div id="imgModal" class="modal hidden">
-    <div class="modal-backdrop" id="modalBackdrop"></div>
-    <div class="modal-content">
-      <button id="modalClose" class="close">×</button>
-      <img id="modalImg" alt="이미지" />
-    </div>
-  </div>
-
-  <!-- Firebase SDK (모듈) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
-    import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-analytics.js";
-    import {
-      getFirestore, collection, query, where, orderBy, getDocs, doc, getDoc
-    } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
+    import { getFirestore, collection, query, where, orderBy, getDocs, addDoc, updateDoc, doc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCjO0wwQQc8pDuQPurxVobABlKHAxDY2YA",
@@ -81,175 +50,140 @@
       storageBucket: "jungwonjd2-1c79f.firebasestorage.app",
       messagingSenderId: "962425903739",
       appId: "1:962425903739:web:de0c905dc285f566d3a0de",
-      measurementId: "G-7LKGCZKMFW"
     };
 
     const app = initializeApp(firebaseConfig);
-    const analytics = getAnalytics(app);
     const db = getFirestore(app);
 
-    // UI refs
-    const tabs = document.getElementById('categoryTabs');
-    const list = document.getElementById('list');
-    const classSelect = document.getElementById('classSelect');
-    const searchInput = document.getElementById('searchInput');
-    const assessmentFilter = document.getElementById('assessmentFilter');
-    const subjectSelect = document.getElementById('subjectSelect');
+    const tabs=document.getElementById('categoryTabs');
+    const list=document.getElementById('list');
+    const classSelect=document.getElementById('classSelect');
+    const searchInput=document.getElementById('searchInput');
+    let currentCat='general';
+    let classPwCache={};
 
-    let currentCat = 'general';
+    function linkify(text){
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      return text.replace(urlRegex, '<a href="$1" target="_blank" class="link">$1</a>');
+    }
 
     function setActiveTab(cat){
-      [...tabs.querySelectorAll('.tab')].forEach(b=>{
-        b.classList.toggle('active', b.dataset.cat===cat);
-      });
-      currentCat = cat;
-      assessmentFilter.classList.toggle('hidden', cat!=="assessment");
+      [...tabs.querySelectorAll('.tab')].forEach(b=>b.classList.toggle('active',b.dataset.cat===cat));
+      currentCat=cat;
       render();
     }
-
-    tabs.addEventListener('click', (e)=>{
-      const b = e.target.closest('button[data-cat]');
-      if(!b) return;
+    tabs.addEventListener('click',(e)=>{
+      const b=e.target.closest('button[data-cat]');
+      if(!b)return;
       setActiveTab(b.dataset.cat);
     });
-
-    classSelect.addEventListener('change', render);
-    searchInput.addEventListener('input', render);
-    subjectSelect.addEventListener('change', render);
-
-    // 이미지 모달
-    const modal = document.getElementById('imgModal');
-    const modalImg = document.getElementById('modalImg');
-    document.getElementById('modalBackdrop').addEventListener('click', ()=>modal.classList.add('hidden'));
-    document.getElementById('modalClose').addEventListener('click', ()=>modal.classList.add('hidden'));
-
-    function openImg(url){
-      modalImg.src = url;
-      modal.classList.remove('hidden');
-    }
-
-    function fmtDate(iso){
-      if(!iso) return '';
-      const d = new Date(iso);
-      const yy = String(d.getFullYear()).slice(2);
-      const mm = String(d.getMonth()+1).padStart(2,'0');
-      const dd = String(d.getDate()).padStart(2,'0');
-      return `${yy}.${mm}.${dd}`;
-    }
+    classSelect.addEventListener('change',render);
+    searchInput.addEventListener('input',render);
 
     async function fetchPosts(){
-      const postsRef = collection(db, 'posts');
+      const postsRef=collection(db,'posts');
       let q;
-      const cls = classSelect.value;
-
       if(currentCat==='class_notice'){
-        q = query(postsRef, where('category','==','class_notice'), where('targetClass','==',cls), orderBy('createdAt','desc'));
-      } else if(currentCat==='general'){
-        q = query(postsRef, where('category','==','general'), orderBy('createdAt','desc'));
-      } else if(currentCat==='event'){
-        q = query(postsRef, where('category','==','event'), orderBy('eventDate','asc'));
-      } else if(currentCat==='assessment'){
-        // 작성된 순서(최신 먼저)
-        if(subjectSelect.value==='all'){
-          q = query(postsRef, where('category','==','assessment'), orderBy('createdAt','desc'));
-        } else {
-          q = query(postsRef, where('category','==','assessment'), where('subject','==',subjectSelect.value), orderBy('createdAt','desc'));
-        }
+        q=query(postsRef,where('category','==','class_notice'),where('targetClass','==',classSelect.value),orderBy('createdAt','desc'));
+      }else{
+        q=query(postsRef,where('category','==',currentCat),orderBy('createdAt','desc'));
       }
-      const snap = await getDocs(q);
-      return snap.docs.map(d=>({id:d.id, ...d.data()}));
+      const snap=await getDocs(q);
+      return snap.docs.map(d=>({id:d.id,...d.data()}));
     }
 
-    async function attachClassSchedules(postId, base){
-      // classSchedules/{class}
-      const cls = classSelect.value;
-      const ref = doc(db, `posts/${postId}/classSchedules/${cls}`);
-      const s = await getDoc(ref);
-      if(s.exists()){
-        base.classItems = s.data().items || [];
-      } else {
-        base.classItems = [];
-      }
-      return base;
+    async function verifyClassPw(){
+      const cls=classSelect.value;
+      if(classPwCache[cls]) return true;
+      const pw=prompt(`${cls}반 비밀번호를 입력하세요`);
+      if(!pw)return false;
+      const ref=doc(db,'classPasswords',cls);
+      const snap=await getDoc(ref);
+      if(!snap.exists()||snap.data().password!==pw){alert('비밀번호가 올바르지 않습니다.');return false;}
+      classPwCache[cls]=true;
+      return true;
     }
-
-    function matchSchedule(n, classItems){
-      return classItems.find(it=>String(it.n)===String(n));
-    }
-
-    function card(p){
-      const q = searchInput.value.trim().toLowerCase();
-      if(q){
-        const hay = `${p.title||''} ${p.content||''}`.toLowerCase();
-        if(!hay.includes(q)) return '';
-      }
-
-      const img = p.imageUrl ? `<img class="card-img" src="${p.imageUrl}" alt="image" onclick="window.__openImg('${p.imageUrl.replace(/'/g,"%27")}')" />` : '';
-      const file = p.fileUrl ? `<a class="btn" href="${p.fileUrl}" download>파일 다운로드</a>` : '';
-
-      if(p.category==='event'){
-        return `
-        <article class="card">
-          <h3>${p.title||''}</h3>
-          <div class="muted">행사일: ${fmtDate(p.eventDate)}</div>
-          <p>${(p.content||'').replace(/\n/g,'<br/>')}</p>
-          ${img}
-          ${file}
-        </article>`;
-      }
-
-      if(p.category==='general' || p.category==='class_notice'){
-        return `
-        <article class="card">
-          <h3>${p.title||''}</h3>
-          <p>${(p.content||'').replace(/\n/g,'<br/>')}</p>
-          ${img}
-          ${file}
-        </article>`;
-      }
-
-      if(p.category==='assessment'){
-        const schedules = Array.isArray(p.schedules) ? p.schedules : [];
-        const lines = schedules.map(sc=>{
-          const hit = matchSchedule(sc.n, p.classItems||[]);
-          const right = hit ? `<span class="pill">${fmtDate(hit.date)} ${hit.period}교시</span>` : '';
-          return `<div class="mono">${sc.n}차시 : ${sc.text||''} ${right}</div>`;
-        }).join('');
-        const editUrl = `./schedule-edit.html?post=${p.id}`;
-        return `
-        <article class="card">
-          <h3>${p.title||''}</h3>
-          <p>${(p.content||'').replace(/\n/g,'<br/>')}</p>
-          ${img}
-          <div class="muted">일정</div>
-          <div>${lines}</div>
-          <div class="row end">
-            <a class="btn" href="${editUrl}">일정 수정</a>
-            ${file}
-          </div>
-        </article>`;
-      }
-      return '';
-    }
-
-    window.__openImg = openImg; // inline handler에서 접근하도록
 
     async function render(){
-      list.innerHTML = '<div class="skeleton">불러오는 중…</div>';
-      const posts = await fetchPosts();
+      list.innerHTML='<div class="muted">불러오는 중...</div>';
+      const posts=await fetchPosts();
+      const q=searchInput.value.trim().toLowerCase();
 
-      // assessment는 반별 일정 join
-      if(currentCat==='assessment'){
-        for(let i=0;i<posts.length;i++){
-          posts[i] = await attachClassSchedules(posts[i].id, posts[i]);
-        }
+      let html='';
+      if(currentCat==='class_notice'){
+        html+=`
+        <div id="newNoticeBox">
+          <h3>새 반별 공지 작성</h3>
+          <input id="newTitle" class="input" placeholder="제목" />
+          <textarea id="newContent" class="input" rows="4" placeholder="내용"></textarea>
+          <button id="newSubmit" class="btn primary">게시</button>
+          <div id="newMsg" class="muted"></div>
+        </div>`;
       }
 
-      const html = posts.map(card).filter(Boolean).join('');
-      list.innerHTML = html || '<div class="empty">게시물이 없습니다.</div>';
+      posts.forEach(p=>{
+        if(q){
+          const hay=(p.title+p.content).toLowerCase();
+          if(!hay.includes(q))return;
+        }
+        html+=`
+        <article class="card" data-id="${p.id}">
+          <h3>${p.title}</h3>
+          <p>${linkify(p.content||'').replace(/\n/g,'<br>')}</p>
+          ${p.imageUrl?`<img src="${p.imageUrl}">`:''}
+          <div class="row end">
+            ${currentCat==='class_notice'?`<button class="btn small" data-edit="${p.id}">수정</button>`:''}
+          </div>
+        </article>`;
+      });
+      list.innerHTML=html||'<div class="empty">게시물이 없습니다.</div>';
+
+      if(currentCat==='class_notice'){
+        document.getElementById('newSubmit').addEventListener('click',async()=>{
+          if(!await verifyClassPw())return;
+          const title=document.getElementById('newTitle').value.trim();
+          const content=document.getElementById('newContent').value.trim();
+          if(!title||!content){alert('제목과 내용을 입력하세요');return;}
+          await addDoc(collection(db,'posts'),{
+            title,content,category:'class_notice',
+            targetClass:classSelect.value,
+            createdAt:serverTimestamp()
+          });
+          alert('게시 완료!');
+          render();
+        });
+
+        list.querySelectorAll('[data-edit]').forEach(btn=>{
+          btn.addEventListener('click',async()=>{
+            if(!await verifyClassPw())return;
+            const id=btn.dataset.edit;
+            const card=btn.closest('.card');
+            const titleEl=card.querySelector('h3');
+            const contentEl=card.querySelector('p');
+            const oldTitle=titleEl.textContent;
+            const oldContent=contentEl.textContent;
+
+            card.innerHTML=`
+              <div class="edit-box">
+                <input class="input" id="editTitle" value="${oldTitle}" />
+                <textarea class="input" id="editContent">${oldContent}</textarea>
+                <button class="btn primary" id="saveBtn">저장</button>
+                <button class="btn ghost" id="cancelBtn">취소</button>
+              </div>`;
+
+            card.querySelector('#saveBtn').addEventListener('click',async()=>{
+              const t=card.querySelector('#editTitle').value.trim();
+              const c=card.querySelector('#editContent').value.trim();
+              await updateDoc(doc(db,'posts',id),{title:t,content:c,updatedAt:serverTimestamp()});
+              alert('수정 완료!');
+              render();
+            });
+            card.querySelector('#cancelBtn').addEventListener('click',()=>render());
+          });
+        });
+      }
     }
 
-    // 초기 렌더
     setActiveTab('general');
   </script>
 </body>
