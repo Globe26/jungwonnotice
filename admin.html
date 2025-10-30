@@ -7,11 +7,20 @@
   <link rel="stylesheet" href="./styles.css" />
   <style>
     #postList .card {
-      border: 1px solid #ccc; border-radius: 8px; padding: 10px;
-      margin-bottom: 12px; display: flex; flex-direction: column;
-      align-items: flex-start; gap: 6px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
     }
-    #previewWrap img { max-width: 200px; border-radius: 8px; margin-bottom: 10px; }
+    #previewWrap img {
+      max-width: 200px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
   </style>
 </head>
 <body>
@@ -79,22 +88,6 @@
         <input id="eventDate" class="input" type="date" />
       </div>
 
-      <div id="assessmentWrap" class="hidden">
-        <div class="row">
-          <label class="label">과목</label>
-          <select id="subject" class="select">
-            <option>국어</option><option>수학</option><option>영어</option><option>통합사회</option>
-            <option>통합과학</option><option>한국사</option><option>기술가정</option><option>한문</option>
-            <option>미술</option><option>체육</option><option>과학탐구실험</option><option>기타</option>
-          </select>
-        </div>
-        <div class="row">
-          <label class="label">일정(차시)</label>
-          <div id="scheduleList"></div>
-          <button id="addSchedule" class="btn ghost">차시 추가</button>
-        </div>
-      </div>
-
       <div class="row"><label class="label">사진(선택)</label><input id="image" type="file" accept="image/*" /></div>
       <div class="row"><label class="label">파일(선택)</label><input id="file" type="file" /></div>
 
@@ -110,7 +103,6 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
     import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-analytics.js";
     import { getFirestore, doc, setDoc, collection, addDoc, serverTimestamp, getDocs, deleteDoc, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
-    import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-storage.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCjO0wwQQc8pDuQPurxVobABlKHAxDY2YA",
@@ -125,45 +117,50 @@
     const app = initializeApp(firebaseConfig);
     const analytics = getAnalytics(app);
     const db = getFirestore(app);
-    const storage = getStorage(app);
 
-// 이건 Firestore에 직접 이미지 저장 (CORS 없음)
-async function uploadIfNeeded(file) {
-  if (!file) return null;
-
-  // 1MB 이하로 압축 (품질 0.7)
-  const compressed = await new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const scale = Math.min(800 / img.width, 800 / img.height, 1);
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL('image/jpeg', 0.7)); // 압축된 Base64
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-
-  return compressed;
-}
-    // 로그인 게이트
-    const gate = document.getElementById('gate');
-    const panel = document.getElementById('panel');
-    const editSection = document.getElementById('editSection');
-    const gateMsg = document.getElementById('gateMsg');
-    document.getElementById('enterBtn').addEventListener('click', ()=>{
+    // 🔒 로그인 게이트
+    const gate=document.getElementById('gate');
+    const panel=document.getElementById('panel');
+    const editSection=document.getElementById('editSection');
+    const gateMsg=document.getElementById('gateMsg');
+    document.getElementById('enterBtn').addEventListener('click',()=>{
       const v=document.getElementById('adminPw').value;
       if(v==='0922'){ gate.classList.add('hidden'); panel.classList.remove('hidden'); editSection.classList.remove('hidden'); }
       else { gateMsg.textContent='비밀번호가 올바르지 않습니다.'; }
     });
 
-    // 게시 버튼
+    // ✅ Base64 업로드 함수 (CORS 없음)
+    async function uploadIfNeeded(file, isImage=false) {
+      if (!file) return null;
+      if (isImage && file.type.startsWith("image/")) {
+        return await new Promise((resolve)=>{
+          const reader=new FileReader();
+          reader.onload=e=>{
+            const img=new Image();
+            img.onload=()=>{
+              const canvas=document.createElement('canvas');
+              const ctx=canvas.getContext('2d');
+              const scale=Math.min(800/img.width,800/img.height,1);
+              canvas.width=img.width*scale;
+              canvas.height=img.height*scale;
+              ctx.drawImage(img,0,0,canvas.width,canvas.height);
+              resolve(canvas.toDataURL('image/jpeg',0.7));
+            };
+            img.src=e.target.result;
+          };
+          reader.readAsDataURL(file);
+        });
+      } else {
+        return await new Promise((resolve,reject)=>{
+          const reader=new FileReader();
+          reader.onload=e=>resolve(e.target.result);
+          reader.onerror=reject;
+          reader.readAsDataURL(file);
+        });
+      }
+    }
+
+    // 📝 게시글 작성
     document.getElementById('publish').addEventListener('click', async ()=>{
       const btn=document.getElementById('publish');
       const msg=document.getElementById('pubMsg');
@@ -175,24 +172,28 @@ async function uploadIfNeeded(file) {
       btn.disabled=true;
       msg.textContent='게시 중...';
 
-      const image=document.getElementById('image').files[0];
-      const file=document.getElementById('file').files[0];
-      const payload={
-        category,title,content,createdAt:serverTimestamp(),
-        targetClass:category==='class_notice'?document.getElementById('targetClass').value:'all'
-      };
-
-      if(category==='event')payload.eventDate=document.getElementById('eventDate').value;
-      payload.imageUrl=await uploadIfneeded(image,'images');
-      payload.fileUrl=await uploadIfneeded(file,'files');
-
-      await addDoc(collection(db,'posts'),payload);
-      btn.disabled=false;
-      msg.textContent='';
-      alert('게시 완료!');
+      try {
+        const image=document.getElementById('image').files[0];
+        const file=document.getElementById('file').files[0];
+        const payload={
+          category,title,content,createdAt:serverTimestamp(),
+          targetClass:category==='class_notice'?document.getElementById('targetClass').value:'all'
+        };
+        if(category==='event')payload.eventDate=document.getElementById('eventDate').value;
+        payload.imageUrl=await uploadIfNeeded(image,true);
+        payload.fileUrl=await uploadIfNeeded(file,false);
+        await addDoc(collection(db,'posts'),payload);
+        alert('게시 완료!');
+      } catch(err){
+        console.error(err);
+        alert('게시 중 오류가 발생했습니다.');
+      } finally {
+        btn.disabled=false;
+        msg.textContent='';
+      }
     });
 
-    /* ===================== 수정탭 ===================== */
+    // 🧩 수정/삭제 탭
     editSection.innerHTML=`
       <h2>게시글 수정 / 삭제</h2>
       <div class="row">
@@ -258,7 +259,7 @@ async function uploadIfNeeded(file) {
           const id=btn.dataset.edit;currentEditId=id;
           const snap=await getDoc(doc(db,'posts',id));const data=snap.data();
           editTitle.value=data.title||'';editContent.value=data.content||'';
-          previewWrap.innerHTML=data.imageUrl?`<img src="${data.imageUrl}">`:'';
+          previewWrap.innerHTML=data.imageUrl?`<img src="${data.imageUrl}">`:''; 
           editForm.classList.remove('hidden');
           window.scrollTo({top:editForm.offsetTop,behavior:'smooth'});
         });
@@ -280,8 +281,8 @@ async function uploadIfNeeded(file) {
       if(!currentEditId)return;
       const title=editTitle.value.trim();
       const content=editContent.value.trim();
-      const img=await uploadIfNeeded(editImage.files[0],'images');
-      const file=await uploadIfNeeded(editFile.files[0],'files');
+      const img=await uploadIfNeeded(editImage.files[0],true);
+      const file=await uploadIfNeeded(editFile.files[0],false);
       const payload={title,content,updatedAt:serverTimestamp()};
       if(img)payload.imageUrl=img;
       if(file)payload.fileUrl=file;
@@ -290,11 +291,8 @@ async function uploadIfNeeded(file) {
       editForm.classList.add('hidden');
       postList.innerHTML='';
     });
+
     document.getElementById('cancelEdit').addEventListener('click',()=>editForm.classList.add('hidden'));
   </script>
 </body>
 </html>
-
-
-
-
