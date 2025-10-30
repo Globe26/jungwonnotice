@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>관리자 패널</title>
   <link rel="stylesheet" href="./styles.css" />
+  <style>
+    #postList .card {
+      border: 1px solid #ccc; border-radius: 8px; padding: 10px;
+      margin-bottom: 12px; display: flex; flex-direction: column;
+      align-items: flex-start; gap: 6px;
+    }
+    #previewWrap img { max-width: 200px; border-radius: 8px; margin-bottom: 10px; }
+  </style>
 </head>
 <body>
   <header class="container">
@@ -102,12 +110,13 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
     import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-analytics.js";
     import { getFirestore, doc, setDoc, collection, addDoc, serverTimestamp, getDocs, deleteDoc, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
+    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-storage.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCjO0wwQQc8pDuQPurxVobABlKHAxDY2YA",
       authDomain: "jungwonjd2-1c79f.firebaseapp.com",
       projectId: "jungwonjd2-1c79f",
-      storageBucket: "jungwonjd2-1c79f.firebasestorage.app",
+      storageBucket: "jungwonjd2-1c79f.appspot.com", // ✅ 수정됨
       messagingSenderId: "962425903739",
       appId: "1:962425903739:web:de0c905dc285f566d3a0de",
       measurementId: "G-7LKGCZKMFW"
@@ -116,6 +125,7 @@
     const app = initializeApp(firebaseConfig);
     const analytics = getAnalytics(app);
     const db = getFirestore(app);
+    const storage = getStorage(app);
 
     // 로그인 게이트
     const gate = document.getElementById('gate');
@@ -123,85 +133,88 @@
     const editSection = document.getElementById('editSection');
     const gateMsg = document.getElementById('gateMsg');
     document.getElementById('enterBtn').addEventListener('click', ()=>{
-      const v = document.getElementById('adminPw').value;
+      const v=document.getElementById('adminPw').value;
       if(v==='0922'){ gate.classList.add('hidden'); panel.classList.remove('hidden'); editSection.classList.remove('hidden'); }
-      else { gateMsg.textContent = '비밀번호가 올바르지 않습니다.'; }
+      else { gateMsg.textContent='비밀번호가 올바르지 않습니다.'; }
     });
 
     // 반장 비밀번호 저장
     document.getElementById('saveClassPw').addEventListener('click', async ()=>{
-      const cls = document.getElementById('classSelect').value;
-      const pw = document.getElementById('classPw').value.trim();
+      const cls=document.getElementById('classSelect').value;
+      const pw=document.getElementById('classPw').value.trim();
       if(!pw) return;
-      await setDoc(doc(db, 'classPasswords', cls), { password: pw });
-      document.getElementById('classPwMsg').textContent = `${cls}반 비밀번호 저장됨`;
+      await setDoc(doc(db,'classPasswords',cls),{password:pw});
+      document.getElementById('classPwMsg').textContent=`${cls}반 비밀번호 저장됨`;
     });
 
     // 카테고리 전환
-    const category = document.getElementById('category');
-    const targetClassWrap = document.getElementById('targetClassWrap');
-    const eventWrap = document.getElementById('eventWrap');
-    const assessmentWrap = document.getElementById('assessmentWrap');
+    const category=document.getElementById('category');
+    const targetClassWrap=document.getElementById('targetClassWrap');
+    const eventWrap=document.getElementById('eventWrap');
+    const assessmentWrap=document.getElementById('assessmentWrap');
     function updateFormByCategory(){
-      const c = category.value;
-      targetClassWrap.classList.toggle('hidden', c!=="class_notice");
-      eventWrap.classList.toggle('hidden', c!=="event");
-      assessmentWrap.classList.toggle('hidden', c!=="assessment");
+      const c=category.value;
+      targetClassWrap.classList.toggle('hidden',c!=="class_notice");
+      eventWrap.classList.toggle('hidden',c!=="event");
+      assessmentWrap.classList.toggle('hidden',c!=="assessment");
     }
-    category.addEventListener('change', updateFormByCategory);
+    category.addEventListener('change',updateFormByCategory);
     updateFormByCategory();
 
-    // 차시 관련
-    const scheduleList = document.getElementById('scheduleList');
-    let scheduleN = 1;
-    function renderScheduleItem(n, text=''){
-      const wrap = document.createElement('div');
-      wrap.className = 'row';
-      wrap.innerHTML = `<div class="mono">${n}차시 :</div>
+    // 차시 관리
+    const scheduleList=document.getElementById('scheduleList');
+    let scheduleN=1;
+    function renderScheduleItem(n,text=''){
+      const wrap=document.createElement('div');
+      wrap.className='row';
+      wrap.innerHTML=`<div class="mono">${n}차시 :</div>
         <input class="input flex1" data-n="${n}" placeholder="내용" value="${text}" />
         <button class="btn ghost" data-remove="${n}">삭제</button>`;
       scheduleList.appendChild(wrap);
-      wrap.querySelector('[data-remove]').addEventListener('click', ()=>wrap.remove());
+      wrap.querySelector('[data-remove]').addEventListener('click',()=>wrap.remove());
     }
     renderScheduleItem(1);
-    document.getElementById('addSchedule').addEventListener('click', ()=>{ scheduleN++; renderScheduleItem(scheduleN); });
+    document.getElementById('addSchedule').addEventListener('click',()=>{scheduleN++;renderScheduleItem(scheduleN);});
 
-    // base64 변환
-    async function uploadIfNeeded(file) {
-      if (!file) return null;
-      return await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = e => resolve(e.target.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+    // Storage 업로드
+    async function uploadIfNeeded(file,pathPrefix="uploads"){
+      if(!file) return null;
+      const fileRef=ref(storage,`${pathPrefix}/${Date.now()}_${file.name}`);
+      await uploadBytes(fileRef,file);
+      return await getDownloadURL(fileRef);
     }
 
-    // 게시 버튼
-    document.getElementById('publish').addEventListener('click', async ()=>{
-      const c = category.value;
-      const title = document.getElementById('title').value.trim();
-      const content = document.getElementById('content').value.trim();
-      if(!title){ document.getElementById('pubMsg').textContent = '제목은 필수입니다.'; return; }
-      const imageFile = document.getElementById('image').files[0] || null;
-      const anyFile = document.getElementById('file').files[0] || null;
-      const payload = { category: c, targetClass: c==='class_notice'?document.getElementById('targetClass').value:'all', title, content, createdAt: serverTimestamp() };
-      if(c==='event') payload.eventDate = document.getElementById('eventDate').value || null;
+    // 게시
+    document.getElementById('publish').addEventListener('click',async()=>{
+      const btn=document.getElementById('publish');
+      const msg=document.getElementById('pubMsg');
+      const c=category.value;
+      const title=document.getElementById('title').value.trim();
+      const content=document.getElementById('content').value.trim();
+      if(!title){msg.textContent='제목은 필수입니다.';return;}
+      btn.disabled=true; msg.textContent='게시 중...';
+
+      const imageFile=document.getElementById('image').files[0]||null;
+      const anyFile=document.getElementById('file').files[0]||null;
+      const payload={category:c,targetClass:c==='class_notice'?document.getElementById('targetClass').value:'all',title,content,createdAt:serverTimestamp()};
+      if(c==='event')payload.eventDate=document.getElementById('eventDate').value||null;
       if(c==='assessment'){
-        payload.subject = document.getElementById('subject').value;
-        const inputs = scheduleList.querySelectorAll('input[data-n]');
-        const schedules=[]; inputs.forEach(inp=>{const n=Number(inp.dataset.n);const text=inp.value.trim();if(text)schedules.push({n,text});});
-        if(schedules.length===0)schedules.push({n:1,text:''}); payload.schedules=schedules;
+        payload.subject=document.getElementById('subject').value;
+        const inputs=scheduleList.querySelectorAll('input[data-n]');
+        const schedules=[];
+        inputs.forEach(inp=>{const n=Number(inp.dataset.n);const text=inp.value.trim();if(text)schedules.push({n,text});});
+        if(schedules.length===0)schedules.push({n:1,text:''});payload.schedules=schedules;
       }
-      const imgUrl = await uploadIfNeeded(imageFile);
-      const fileUrl = await uploadIfNeeded(anyFile);
-      payload.imageUrl = imgUrl||null; payload.fileUrl = fileUrl||null;
-      await addDoc(collection(db,'posts'), payload);
-      document.getElementById('pubMsg').textContent = '게시 완료!';
+
+      payload.imageUrl=await uploadIfNeeded(imageFile,'images');
+      payload.fileUrl=await uploadIfNeeded(anyFile,'files');
+      await addDoc(collection(db,'posts'),payload);
+      btn.disabled=false; msg.textContent='';
+      alert('게시 완료!');
     });
 
     /* ===================== 수정탭 ===================== */
-    editSection.innerHTML = `
+    editSection.innerHTML=`
       <h2>게시글 수정 / 삭제</h2>
       <div class="row">
         <label class="label">카테고리 선택</label>
@@ -237,14 +250,14 @@
     const editMsg=document.getElementById('editMsg');
     let currentEditId=null;
 
-    editCategory.addEventListener('change', async()=>{
+    editCategory.addEventListener('change',async()=>{
       postList.innerHTML='<p>로딩 중...</p>';
       const cat=editCategory.value;
       const qSnap=await getDocs(collection(db,'posts'));
       const filtered=[];
       qSnap.forEach(docSnap=>{
         const d=docSnap.data();
-        if(d.category===cat) filtered.push({id:docSnap.id,...d});
+        if(d.category===cat)filtered.push({id:docSnap.id,...d});
       });
       if(filtered.length===0){postList.innerHTML='<p>해당 카테고리 게시글 없음.</p>';return;}
       postList.innerHTML='';
@@ -252,33 +265,32 @@
         const item=document.createElement('div');
         item.className='card';
         item.innerHTML=`
-          <b>${d.title}</b><br/>
-          <small>${d.content.substring(0,40)}...</small><br/>
-          <button class="btn small" data-edit="${d.id}">수정</button>
-          <button class="btn ghost small" data-del="${d.id}">삭제</button>
-        `;
+          <b>${d.title}</b>
+          <small>${d.content.substring(0,60)}...</small>
+          <div style="margin-top:5px;">
+            <button class="btn small" data-edit="${d.id}">수정</button>
+            <button class="btn ghost small" data-del="${d.id}">삭제</button>
+          </div>`;
         postList.appendChild(item);
       });
 
-      // 수정 클릭
       postList.querySelectorAll('[data-edit]').forEach(btn=>{
         btn.addEventListener('click',async()=>{
-          const id=btn.dataset.edit; currentEditId=id;
-          const snap=await getDoc(doc(db,'posts',id)); const data=snap.data();
-          editTitle.value=data.title||''; editContent.value=data.content||'';
-          previewWrap.innerHTML=data.imageUrl?`<img src="${data.imageUrl}" style="max-width:200px;border-radius:8px;margin-bottom:10px;">`:'';
+          const id=btn.dataset.edit;currentEditId=id;
+          const snap=await getDoc(doc(db,'posts',id));const data=snap.data();
+          editTitle.value=data.title||'';editContent.value=data.content||'';
+          previewWrap.innerHTML=data.imageUrl?`<img src="${data.imageUrl}">`:'';
           editForm.classList.remove('hidden');
           window.scrollTo({top:editForm.offsetTop,behavior:'smooth'});
         });
       });
 
-      // 삭제 클릭
       postList.querySelectorAll('[data-del]').forEach(btn=>{
         btn.addEventListener('click',async()=>{
           const id=btn.dataset.del;
           if(confirm('정말 이 게시글을 삭제하시겠습니까? 삭제 후 복구할 수 없습니다.')){
             await deleteDoc(doc(db,'posts',id));
-            btn.parentElement.remove();
+            btn.closest('.card').remove();
             alert('삭제 완료!');
           }
         });
@@ -286,11 +298,11 @@
     });
 
     document.getElementById('saveEdit').addEventListener('click',async()=>{
-      if(!currentEditId) return;
+      if(!currentEditId)return;
       const title=editTitle.value.trim();
       const content=editContent.value.trim();
-      const img=await uploadIfNeeded(editImage.files[0]);
-      const file=await uploadIfNeeded(editFile.files[0]);
+      const img=await uploadIfNeeded(editImage.files[0],'images');
+      const file=await uploadIfNeeded(editFile.files[0],'files');
       const payload={title,content,updatedAt:serverTimestamp()};
       if(img)payload.imageUrl=img;
       if(file)payload.fileUrl=file;
@@ -299,7 +311,6 @@
       editForm.classList.add('hidden');
       postList.innerHTML='';
     });
-
     document.getElementById('cancelEdit').addEventListener('click',()=>editForm.classList.add('hidden'));
   </script>
 </body>
