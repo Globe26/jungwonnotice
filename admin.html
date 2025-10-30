@@ -110,13 +110,13 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
     import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-analytics.js";
     import { getFirestore, doc, setDoc, collection, addDoc, serverTimestamp, getDocs, deleteDoc, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
-    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-storage.js";
+    import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-storage.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCjO0wwQQc8pDuQPurxVobABlKHAxDY2YA",
       authDomain: "jungwonjd2-1c79f.firebaseapp.com",
       projectId: "jungwonjd2-1c79f",
-      storageBucket: "jungwonjd2-1c79f.appspot.com", // ✅ 수정됨
+      storageBucket: "jungwonjd2-1c79f.appspot.com",
       messagingSenderId: "962425903739",
       appId: "1:962425903739:web:de0c905dc285f566d3a0de",
       measurementId: "G-7LKGCZKMFW"
@@ -126,6 +126,28 @@
     const analytics = getAnalytics(app);
     const db = getFirestore(app);
     const storage = getStorage(app);
+
+    // ✅ CORS 안 터지는 Firebase 공식 업로드 함수
+    async function uploadIfNeeded(file, pathPrefix = "uploads") {
+      if (!file) return null;
+      return new Promise((resolve, reject) => {
+        const fileRef = ref(storage, `${pathPrefix}/${Date.now()}_${file.name}`);
+        const uploadTask = uploadBytesResumable(fileRef, file);
+
+        uploadTask.on(
+          "state_changed",
+          snapshot => {},
+          error => {
+            console.error("업로드 실패:", error);
+            reject(error);
+          },
+          async () => {
+            const url = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve(url);
+          }
+        );
+      });
+    }
 
     // 로그인 게이트
     const gate = document.getElementById('gate');
@@ -138,78 +160,32 @@
       else { gateMsg.textContent='비밀번호가 올바르지 않습니다.'; }
     });
 
-    // 반장 비밀번호 저장
-    document.getElementById('saveClassPw').addEventListener('click', async ()=>{
-      const cls=document.getElementById('classSelect').value;
-      const pw=document.getElementById('classPw').value.trim();
-      if(!pw) return;
-      await setDoc(doc(db,'classPasswords',cls),{password:pw});
-      document.getElementById('classPwMsg').textContent=`${cls}반 비밀번호 저장됨`;
-    });
-
-    // 카테고리 전환
-    const category=document.getElementById('category');
-    const targetClassWrap=document.getElementById('targetClassWrap');
-    const eventWrap=document.getElementById('eventWrap');
-    const assessmentWrap=document.getElementById('assessmentWrap');
-    function updateFormByCategory(){
-      const c=category.value;
-      targetClassWrap.classList.toggle('hidden',c!=="class_notice");
-      eventWrap.classList.toggle('hidden',c!=="event");
-      assessmentWrap.classList.toggle('hidden',c!=="assessment");
-    }
-    category.addEventListener('change',updateFormByCategory);
-    updateFormByCategory();
-
-    // 차시 관리
-    const scheduleList=document.getElementById('scheduleList');
-    let scheduleN=1;
-    function renderScheduleItem(n,text=''){
-      const wrap=document.createElement('div');
-      wrap.className='row';
-      wrap.innerHTML=`<div class="mono">${n}차시 :</div>
-        <input class="input flex1" data-n="${n}" placeholder="내용" value="${text}" />
-        <button class="btn ghost" data-remove="${n}">삭제</button>`;
-      scheduleList.appendChild(wrap);
-      wrap.querySelector('[data-remove]').addEventListener('click',()=>wrap.remove());
-    }
-    renderScheduleItem(1);
-    document.getElementById('addSchedule').addEventListener('click',()=>{scheduleN++;renderScheduleItem(scheduleN);});
-
-    // Storage 업로드
-    async function uploadIfNeeded(file,pathPrefix="uploads"){
-      if(!file) return null;
-      const fileRef=ref(storage,`${pathPrefix}/${Date.now()}_${file.name}`);
-      await uploadBytes(fileRef,file);
-      return await getDownloadURL(fileRef);
-    }
-
-    // 게시
-    document.getElementById('publish').addEventListener('click',async()=>{
+    // 게시 버튼
+    document.getElementById('publish').addEventListener('click', async ()=>{
       const btn=document.getElementById('publish');
       const msg=document.getElementById('pubMsg');
-      const c=category.value;
+      const category=document.getElementById('category').value;
       const title=document.getElementById('title').value.trim();
       const content=document.getElementById('content').value.trim();
       if(!title){msg.textContent='제목은 필수입니다.';return;}
-      btn.disabled=true; msg.textContent='게시 중...';
 
-      const imageFile=document.getElementById('image').files[0]||null;
-      const anyFile=document.getElementById('file').files[0]||null;
-      const payload={category:c,targetClass:c==='class_notice'?document.getElementById('targetClass').value:'all',title,content,createdAt:serverTimestamp()};
-      if(c==='event')payload.eventDate=document.getElementById('eventDate').value||null;
-      if(c==='assessment'){
-        payload.subject=document.getElementById('subject').value;
-        const inputs=scheduleList.querySelectorAll('input[data-n]');
-        const schedules=[];
-        inputs.forEach(inp=>{const n=Number(inp.dataset.n);const text=inp.value.trim();if(text)schedules.push({n,text});});
-        if(schedules.length===0)schedules.push({n:1,text:''});payload.schedules=schedules;
-      }
+      btn.disabled=true;
+      msg.textContent='게시 중...';
 
-      payload.imageUrl=await uploadIfNeeded(imageFile,'images');
-      payload.fileUrl=await uploadIfNeeded(anyFile,'files');
+      const image=document.getElementById('image').files[0];
+      const file=document.getElementById('file').files[0];
+      const payload={
+        category,title,content,createdAt:serverTimestamp(),
+        targetClass:category==='class_notice'?document.getElementById('targetClass').value:'all'
+      };
+
+      if(category==='event')payload.eventDate=document.getElementById('eventDate').value;
+      payload.imageUrl=await uploadIfNeeded(image,'images');
+      payload.fileUrl=await uploadIfNeeded(file,'files');
+
       await addDoc(collection(db,'posts'),payload);
-      btn.disabled=false; msg.textContent='';
+      btn.disabled=false;
+      msg.textContent='';
       alert('게시 완료!');
     });
 
