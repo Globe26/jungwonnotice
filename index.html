@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>중원고 1학년 공지 알리미</title>
   <link rel="stylesheet" href="./styles.css" />
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
   <style>
     .card {border:1px solid #ccc;border-radius:10px;padding:10px;margin-bottom:12px;}
     .card img {max-width:100%;border-radius:8px;margin-top:8px;}
@@ -15,7 +16,8 @@
 </head>
 <body>
   <header class="container">
-    <h1>중원고 1학년 공지 알리미</h1>
+    <img src="./icon.svg" alt="중원고 로고" style="height:40px;vertical-align:middle;margin-right:10px;">
+    <h1 style="display:inline-block;vertical-align:middle;">중원고 1학년 공지 알리미</h1>
     <div class="row">
       <label for="classSelect" class="label">반 선택</label>
       <select id="classSelect" class="select">
@@ -68,13 +70,24 @@
       return text.replace(urlRegex,'<a href="$1" target="_blank">$1</a>');
     }
 
-    // 🖼️ 이미지 파일 base64 변환
-    async function fileToBase64(file){
+    // 🖼️ 이미지 압축 (800px 이하, 품질 0.7)
+    async function compressImage(file){
       if(!file) return null;
-      return new Promise((resolve,reject)=>{
+      return await new Promise(resolve=>{
         const reader=new FileReader();
-        reader.onload=e=>resolve(e.target.result);
-        reader.onerror=reject;
+        reader.onload=e=>{
+          const img=new Image();
+          img.onload=()=>{
+            const canvas=document.createElement('canvas');
+            const ctx=canvas.getContext('2d');
+            const scale=Math.min(800/img.width,800/img.height,1);
+            canvas.width=img.width*scale;
+            canvas.height=img.height*scale;
+            ctx.drawImage(img,0,0,canvas.width,canvas.height);
+            resolve(canvas.toDataURL('image/jpeg',0.7));
+          };
+          img.src=e.target.result;
+        };
         reader.readAsDataURL(file);
       });
     }
@@ -160,7 +173,7 @@
           const content=document.getElementById('newContent').value.trim();
           const file=document.getElementById('newImage').files[0];
           if(!title||!content){alert('제목과 내용을 입력하세요');return;}
-          const imgData=await fileToBase64(file);
+          const imgData=await compressImage(file);
           await addDoc(collection(db,'posts'),{
             title,content,category:'class_notice',
             targetClass:classSelect.value,
@@ -193,7 +206,7 @@
               const nt=card.querySelector('#editTitle').value.trim();
               const nc=card.querySelector('#editContent').value.trim();
               const nf=card.querySelector('#editImage').files[0];
-              const img=await fileToBase64(nf);
+              const img=await compressImage(nf);
               const payload={title:nt,content:nc,updatedAt:serverTimestamp()};
               if(img)payload.imageUrl=img;
               await updateDoc(doc(db,'posts',id),payload);
