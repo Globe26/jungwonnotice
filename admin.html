@@ -7,25 +7,18 @@
   <link rel="stylesheet" href="./styles.css" />
   <style>
     #postList .card {
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      padding: 10px;
-      margin-bottom: 12px;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 6px;
+      border: 1px solid #ccc; border-radius: 8px; padding: 10px;
+      margin-bottom: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
     }
-    #previewWrap img {
-      max-width: 200px;
-      border-radius: 8px;
-      margin-bottom: 10px;
-      display:block;
-    }
-    .hidden { display: none; }
+    #previewWrap img { max-width: 200px; border-radius: 8px; margin-bottom: 10px; display:block; }
+    .hidden { display:none; }
     .row.gap-8 { gap: 8px; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#f0f0f0; font-size:12px; }
+    .w-72 { width: 72px; }
+    .schedule-row { display:flex; align-items:center; gap:8px; margin:6px 0; }
+    .schedule-row input[type="number"] { width: 80px; }
+    .muted { color: #666; font-size: 0.9em; }
   </style>
 </head>
 <body>
@@ -87,7 +80,7 @@
         </select>
       </div>
 
-      <!-- 수행평가 차시(일정) -->
+      <!-- 수행평가 차시(번호+내용) -->
       <div id="assessmentWrap" class="hidden">
         <div class="row">
           <label class="label">일정(차시)</label>
@@ -160,7 +153,7 @@
     });
 
     // ✅ 이미지/파일 Base64 업로더 (이미지 압축)
-    async function toBase64(file){ // 일반 파일
+    async function toBase64(file){
       if(!file) return null;
       return await new Promise((resolve,reject)=>{
         const reader=new FileReader();
@@ -169,7 +162,7 @@
         reader.readAsDataURL(file);
       });
     }
-    async function compressImage(file){ // 이미지 압축
+    async function compressImage(file){
       return await new Promise((resolve)=>{
         const reader=new FileReader();
         reader.onload=e=>{
@@ -190,7 +183,7 @@
     }
     async function uploadManyImages(fileList){
       if(!fileList || fileList.length===0) return [];
-      const files=[...fileList].slice(0,10); // 안전상 최대 10장
+      const files=[...fileList].slice(0,10);
       const out=[];
       for(const f of files){
         if(f.type.startsWith('image/')) out.push(await compressImage(f));
@@ -214,23 +207,24 @@
     categorySel.addEventListener('change',refreshVisibility);
     refreshVisibility();
 
-    // ✅ 수행평가 차시 UI
+    // ✅ 수행평가 차시 UI (번호 직접 입력 가능)
     const scheduleList=document.getElementById('scheduleList');
-    let scheduleN=0;
-    function renderScheduleItem(n,text=''){
+    let scheduleDefaultN=1;
+    function renderScheduleItem(nVal='', textVal=''){
       const row=document.createElement('div');
-      row.className='row gap-8';
+      row.className='schedule-row';
       row.innerHTML=`
-        <div class="mono" style="min-width:64px">${n}차시 :</div>
-        <input class="input flex1" data-n="${n}" placeholder="예: 보고서 작성 / 발표 / 퀴즈" value="${text}" />
-        <button class="btn ghost" data-remove="${n}">삭제</button>`;
+        <input class="input mono" type="number" min="1" step="1" placeholder="차시" data-type="n" value="${nVal!==''?nVal:scheduleDefaultN}">
+        <input class="input flex1" data-type="text" placeholder="예: 보고서 작성 / 발표 / 퀴즈" value="${textVal}">
+        <button class="btn ghost" data-remove>삭제</button>
+      `;
       scheduleList.appendChild(row);
       row.querySelector('[data-remove]').addEventListener('click',()=>row.remove());
+      scheduleDefaultN++;
     }
-    function addSchedule(){ scheduleN+=1; renderScheduleItem(scheduleN); }
-    document.getElementById('addSchedule').addEventListener('click', addSchedule);
+    document.getElementById('addSchedule').addEventListener('click', ()=> renderScheduleItem());
     // 기본 1개
-    addSchedule();
+    renderScheduleItem();
 
     // 📝 게시글 작성
     document.getElementById('publish').addEventListener('click',async()=>{
@@ -251,9 +245,12 @@
         const payload={category,title,content,createdAt:serverTimestamp()};
         if(category==='assessment'){
           payload.subject=document.getElementById('subjectSelect').value;
-          const inputs=[...scheduleList.querySelectorAll('input[data-n]')];
-          const schedules=inputs.map(inp=>({ n:Number(inp.dataset.n), text:inp.value.trim() }))
-                                .filter(it=>it.text!==''||it.n);
+          const rows=[...scheduleList.querySelectorAll('.schedule-row')];
+          const schedules = rows.map(r=>{
+            const n = Number(r.querySelector('[data-type="n"]').value);
+            const text = (r.querySelector('[data-type="text"]').value||'').trim();
+            return { n, text };
+          }).filter(it=>Number.isFinite(it.n) && it.n>0);
           payload.schedules = schedules.length? schedules : [{n:1,text:''}];
         }
         if(category==='class_notice'){
@@ -284,7 +281,7 @@
       }
     });
 
-    // 🧩 수정 / 삭제 탭 (행사일 수정 추가)
+    // 🧩 수정 / 삭제 탭 (행사일/차시 수정 지원)
     editSection.innerHTML=`
       <h2>게시글 수정 / 삭제</h2>
       <div class="row">
@@ -306,6 +303,16 @@
         <div id="editEventWrap" class="row hidden">
           <label class="label">행사일</label>
           <input id="editEventDate" class="input" type="date" />
+        </div>
+
+        <!-- ▶ 수행평가 차시 수정(assessment일 때만 표시) -->
+        <div id="editAssessmentWrap" class="hidden">
+          <div class="row">
+            <label class="label">일정(차시)</label>
+            <div id="editScheduleList"></div>
+            <button id="addEditSchedule" class="btn ghost">차시 추가</button>
+          </div>
+          <div class="muted">차시 번호와 내용을 자유롭게 수정/삭제하세요.</div>
         </div>
 
         <div class="muted">현재 대표 이미지 미리보기</div>
@@ -334,12 +341,29 @@
     const previewWrap=document.getElementById('previewWrap');
     const editMsg=document.getElementById('editMsg');
 
-    // ▶ 행사일 요소 refs
     const editEventWrap=document.getElementById('editEventWrap');
     const editEventDate=document.getElementById('editEventDate');
 
+    const editAssessmentWrap=document.getElementById('editAssessmentWrap');
+    const editScheduleList=document.getElementById('editScheduleList');
+    const addEditSchedule=document.getElementById('addEditSchedule');
+
     let currentEditId=null;
     let currentDocCache=null;
+
+    function renderEditScheduleItem(nVal='', textVal=''){
+      const row=document.createElement('div');
+      row.className='schedule-row';
+      row.innerHTML=`
+        <input class="input mono" type="number" min="1" step="1" placeholder="차시" data-type="n" value="${nVal}">
+        <input class="input flex1" data-type="text" placeholder="예: 보고서 작성 / 발표 / 퀴즈" value="${textVal}">
+        <button class="btn ghost" data-remove>삭제</button>
+      `;
+      editScheduleList.appendChild(row);
+      row.querySelector('[data-remove]').addEventListener('click',()=>row.remove());
+    }
+
+    addEditSchedule.addEventListener('click',()=>renderEditScheduleItem());
 
     editCategory.addEventListener('change',async()=>{
       postList.innerHTML='<p>로딩 중...</p>';
@@ -380,11 +404,25 @@
           // ▶ 행사일 UI 토글 + 값 바인딩
           if(data.category==='event'){
             editEventWrap.classList.remove('hidden');
-            // 문자열(YYYY-MM-DD)로 저장되어 있으니 그대로 바인딩
             editEventDate.value = data.eventDate || '';
           } else {
             editEventWrap.classList.add('hidden');
             editEventDate.value = '';
+          }
+
+          // ▶ assessment면 차시 편집 UI 표출
+          if(data.category==='assessment'){
+            editAssessmentWrap.classList.remove('hidden');
+            editScheduleList.innerHTML='';
+            const schedules = Array.isArray(data.schedules)? data.schedules : [];
+            if(schedules.length===0){
+              renderEditScheduleItem(1,'');
+            } else {
+              schedules.forEach(sc=>renderEditScheduleItem(sc.n ?? '', sc.text ?? ''));
+            }
+          } else {
+            editAssessmentWrap.classList.add('hidden');
+            editScheduleList.innerHTML='';
           }
 
           editForm.classList.remove('hidden');
@@ -425,14 +463,22 @@
         fileUrl = await toBase64(editFile.files[0]);
       }
 
-      const payload={ title, content, updatedAt:serverTimestamp() };
-      payload.imageUrls = imageUrls;
-      payload.imageUrl  = imageUrl;
-      payload.fileUrl   = fileUrl;
+      const payload={ title, content, updatedAt:serverTimestamp(), imageUrls, imageUrl, fileUrl };
 
-      // ▶ 행사일 저장 (이 글이 event일 때만)
+      // ▶ 행사일 저장
       if(currentDocCache?.category === 'event'){
         payload.eventDate = editEventDate.value || null;
+      }
+
+      // ▶ assessment면 차시 배열 저장 (번호/내용 모두 반영)
+      if(currentDocCache?.category === 'assessment'){
+        const rows=[...editScheduleList.querySelectorAll('.schedule-row')];
+        const schedules = rows.map(r=>{
+          const n = Number(r.querySelector('[data-type="n"]').value);
+          const text = (r.querySelector('[data-type="text"]').value||'').trim();
+          return { n, text };
+        }).filter(it=>Number.isFinite(it.n) && it.n>0);
+        payload.schedules = schedules.length? schedules : [{n:1,text:''}];
       }
 
       await updateDoc(doc(db,'posts',currentEditId),payload);
