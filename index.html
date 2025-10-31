@@ -8,6 +8,17 @@
   <link rel="icon" type="image/svg+xml" href="./icon.svg" />
   <style>
     .card-img {max-width:100%;border-radius:8px;margin-top:8px;cursor:pointer;}
+    .img-carousel {position:relative;max-width:100%;margin-top:8px;}
+    .img-carousel img{width:100%;border-radius:8px;}
+    .img-carousel button{
+      position:absolute;top:50%;transform:translateY(-50%);
+      background:rgba(0,0,0,0.5);color:white;border:none;
+      padding:6px 10px;border-radius:50%;cursor:pointer;
+    }
+    .img-prev{left:8px;} .img-next{right:8px;}
+    .img-count{position:absolute;bottom:5px;right:10px;
+      background:rgba(0,0,0,0.5);color:white;padding:2px 6px;
+      border-radius:6px;font-size:12px;}
     .btn.small{font-size:.85em;padding:4px 8px;margin-left:5px;}
     #newNoticeBox{border:1px solid #ccc;border-radius:10px;padding:10px;margin-bottom:12px;}
     .edit-box{border:1px solid #ccc;padding:8px;border-radius:6px;margin-top:8px;}
@@ -59,7 +70,6 @@
     </div>
   </div>
 
-  <!-- Firebase SDK -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
     import { getFirestore, collection, query, where, orderBy, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
@@ -85,13 +95,11 @@
     let currentCat='general';
     let classPwCache={};
 
-    // URL 자동 링크
     function linkify(text){
       const urlRegex=/(https?:\/\/[^\s]+)/g;
       return text.replace(urlRegex,'<a href="$1" target="_blank">$1</a>');
     }
 
-    // 이미지 압축 (800px 이하, 품질 0.7)
     async function compressImage(file){
       if(!file) return null;
       return await new Promise(resolve=>{
@@ -121,7 +129,6 @@
     function openImg(url){ modalImg.src=url; modal.classList.remove('hidden'); }
     window.__openImg=openImg;
 
-    // 탭 전환
     function setActiveTab(cat){
       [...tabs.querySelectorAll('.tab')].forEach(b=>b.classList.toggle('active',b.dataset.cat===cat));
       currentCat=cat;
@@ -162,16 +169,12 @@
       const cls=classSelect.value;
       const ref=doc(db,`posts/${postId}/classSchedules/${cls}`);
       const s=await getDoc(ref);
-      if(s.exists()){ base.classItems=s.data().items||[]; }
-      else{ base.classItems=[]; }
+      base.classItems=s.exists()?s.data().items||[]:[];
       return base;
     }
 
-    function matchSchedule(n,classItems){
-      return classItems.find(it=>String(it.n)===String(n));
-    }
+    function matchSchedule(n,classItems){return classItems.find(it=>String(it.n)===String(n));}
 
-    // 비번 검증
     async function verifyClassPw(){
       const cls=classSelect.value;
       if(classPwCache[cls])return true;
@@ -193,23 +196,59 @@
       return `${yy}.${mm}.${dd}`;
     }
 
+    // 이미지 여러장 → 캐러셀 표시
+    function renderImages(p){
+      const imgs=Array.isArray(p.imageUrls)&&p.imageUrls.length>0?p.imageUrls:[p.imageUrl].filter(Boolean);
+      if(!imgs.length)return'';
+      if(imgs.length===1){
+        return `<img class="card-img" src="${imgs[0]}" alt="img" onclick="window.__openImg('${imgs[0].replace(/'/g,"%27")}')">`;
+      }
+      const first=imgs[0];
+      const id=`carousel-${p.id}`;
+      return `
+      <div class="img-carousel" id="${id}">
+        <img src="${first}" alt="img">
+        <button class="img-prev">‹</button>
+        <button class="img-next">›</button>
+        <div class="img-count">1 / ${imgs.length}</div>
+      </div>
+      <script>
+        (function(){
+          const box=document.getElementById("${id}");
+          const imgEl=box.querySelector("img");
+          const prev=box.querySelector(".img-prev");
+          const next=box.querySelector(".img-next");
+          const count=box.querySelector(".img-count");
+          const arr=${JSON.stringify(imgs)};
+          let idx=0;
+          function update(){
+            imgEl.src=arr[idx];
+            count.textContent=(idx+1)+" / "+arr.length;
+          }
+          prev.onclick=()=>{idx=(idx-1+arr.length)%arr.length;update();};
+          next.onclick=()=>{idx=(idx+1)%arr.length;update();};
+          imgEl.onclick=()=>window.__openImg(arr[idx]);
+        })();
+      </script>`;
+    }
+
     function card(p){
       const q=searchInput.value.trim().toLowerCase();
       if(q){
         const hay=`${p.title||''} ${p.content||''}`.toLowerCase();
         if(!hay.includes(q))return'';
       }
-      const img=p.imageUrl?`<img class="card-img" src="${p.imageUrl}" alt="img" onclick="window.__openImg('${p.imageUrl.replace(/'/g,"%27")}')">`:'';
+      const imgs=renderImages(p);
       const file=p.fileUrl?`<a class="btn" href="${p.fileUrl}" download>파일 다운로드</a>`:'';
       if(p.category==='event'){
         return `<article class="card">
           <h3>${p.title||''}</h3>
           <div class="muted">행사일: ${fmtDate(p.eventDate)}</div>
-          <p>${linkify(p.content||'').replace(/\n/g,'<br/>')}</p>${img}${file}</article>`;
+          <p>${linkify(p.content||'').replace(/\n/g,'<br/>')}</p>${imgs}${file}</article>`;
       }
       if(p.category==='general'||p.category==='class_notice'){
         return `<article class="card" data-id="${p.id}">
-          <h3>${p.title}</h3><p>${linkify(p.content||'').replace(/\n/g,'<br/>')}</p>${img}
+          <h3>${p.title}</h3><p>${linkify(p.content||'').replace(/\n/g,'<br/>')}</p>${imgs}
           ${currentCat==='class_notice'?`
           <div class="row end">
             <button class="btn small" data-edit="${p.id}">수정</button>
@@ -226,7 +265,7 @@
         const editUrl=`./schedule-edit.html?post=${p.id}`;
         return `<article class="card">
           <h3>${p.title||''}</h3>
-          <p>${linkify(p.content||'').replace(/\n/g,'<br/>')}</p>${img}
+          <p>${linkify(p.content||'').replace(/\n/g,'<br/>')}</p>${imgs}
           <div class="muted">일정</div><div>${lines}</div>
           <div class="row end"><a class="btn" href="${editUrl}">일정 수정</a>${file}</div></article>`;
       }
@@ -248,7 +287,7 @@
             <h3>새 반별 공지 작성</h3>
             <input id="newTitle" class="input" placeholder="제목" />
             <textarea id="newContent" class="input" rows="4" placeholder="내용"></textarea>
-            <div class="row"><label>사진(선택)</label><input id="newImage" type="file" accept="image/*"></div>
+            <div class="row"><label>사진(선택, 여러 장)</label><input id="newImage" type="file" accept="image/*" multiple></div>
             <button id="newSubmit" class="btn primary">게시</button>
           </div>`;
       }
@@ -261,12 +300,14 @@
           if(!await verifyClassPw())return;
           const title=document.getElementById('newTitle').value.trim();
           const content=document.getElementById('newContent').value.trim();
-          const file=document.getElementById('newImage').files[0];
+          const files=[...document.getElementById('newImage').files];
           if(!title||!content){alert('제목과 내용을 입력하세요');return;}
-          const imgData=await compressImage(file);
+          const imgs=[];
+          for(const f of files){const d=await compressImage(f);if(d)imgs.push(d);}
           await addDoc(collection(db,'posts'),{
             title,content,category:'class_notice',targetClass:classSelect.value,
-            imageUrl:imgData||null,createdAt:serverTimestamp()
+            imageUrls:imgs, imageUrl:imgs[0]||null,
+            createdAt:serverTimestamp()
           });
           alert('게시 완료!');render();
         });
@@ -283,17 +324,18 @@
               <div class="edit-box">
                 <input id="editTitle" class="input" value="${t}">
                 <textarea id="editContent" class="input">${c}</textarea>
-                <div class="row"><label>사진(선택)</label><input id="editImage" type="file" accept="image/*"></div>
+                <div class="row"><label>사진(선택, 여러 장)</label><input id="editImage" type="file" accept="image/*" multiple></div>
                 <button id="saveBtn" class="btn primary">저장</button>
                 <button id="cancelBtn" class="btn ghost">취소</button>
               </div>`;
             card.querySelector('#saveBtn').addEventListener('click',async()=>{
               const nt=card.querySelector('#editTitle').value.trim();
               const nc=card.querySelector('#editContent').value.trim();
-              const nf=card.querySelector('#editImage').files[0];
-              const img=await compressImage(nf);
+              const files=[...card.querySelector('#editImage').files];
+              const imgs=[];
+              for(const f of files){const d=await compressImage(f);if(d)imgs.push(d);}
               const payload={title:nt,content:nc,updatedAt:serverTimestamp()};
-              if(img)payload.imageUrl=img;
+              if(imgs.length){payload.imageUrls=imgs;payload.imageUrl=imgs[0];}
               await updateDoc(doc(db,'posts',id),payload);
               alert('수정 완료!');render();
             });
@@ -302,21 +344,4 @@
         });
 
         // 삭제
-        list.querySelectorAll('[data-del]').forEach(btn=>{
-          btn.addEventListener('click',async()=>{
-            if(!await verifyClassPw())return;
-            const id=btn.dataset.del;
-            if(confirm('정말 삭제하시겠습니까?')){
-              await deleteDoc(doc(db,'posts',id));
-              alert('삭제 완료!');
-              render();
-            }
-          });
-        });
-      }
-    }
-
-    setActiveTab('general');
-  </script>
-</body>
-</html>
+        list.querySelector
