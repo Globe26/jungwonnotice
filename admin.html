@@ -87,7 +87,7 @@
         </select>
       </div>
 
-      <!-- ✅ 수행평가 차시(일정) 복구 -->
+      <!-- 수행평가 차시(일정) -->
       <div id="assessmentWrap" class="hidden">
         <div class="row">
           <label class="label">일정(차시)</label>
@@ -114,7 +114,7 @@
         <input id="eventDate" class="input" type="date" />
       </div>
 
-      <!-- ✅ 여러 장 업로드 가능 -->
+      <!-- 여러 장 업로드 -->
       <div class="row"><label class="label">사진(선택, 여러 장)</label><input id="image" type="file" accept="image/*" multiple /></div>
       <div class="row"><label class="label">파일(선택)</label><input id="file" type="file" /></div>
 
@@ -190,7 +190,7 @@
     }
     async function uploadManyImages(fileList){
       if(!fileList || fileList.length===0) return [];
-      const files=[...fileList].slice(0,10); // 안전상 최대 10장 제한
+      const files=[...fileList].slice(0,10); // 안전상 최대 10장
       const out=[];
       for(const f of files){
         if(f.type.startsWith('image/')) out.push(await compressImage(f));
@@ -243,20 +243,17 @@
       btn.disabled=true; msg.textContent='게시 중...';
 
       try{
-        // 이미지 여러 장
         const imageFiles=document.getElementById('image').files;
         const imageUrls=await uploadManyImages(imageFiles);
-        // 첨부 파일(단일, 선택)
         const file=document.getElementById('file').files[0];
         const fileUrl=await toBase64(file);
 
         const payload={category,title,content,createdAt:serverTimestamp()};
         if(category==='assessment'){
           payload.subject=document.getElementById('subjectSelect').value;
-          // 차시 수집
           const inputs=[...scheduleList.querySelectorAll('input[data-n]')];
           const schedules=inputs.map(inp=>({ n:Number(inp.dataset.n), text:inp.value.trim() }))
-                                .filter(it=>it.text!==''||it.n); // 비어도 n 보존
+                                .filter(it=>it.text!==''||it.n);
           payload.schedules = schedules.length? schedules : [{n:1,text:''}];
         }
         if(category==='class_notice'){
@@ -268,7 +265,6 @@
           payload.eventDate=document.getElementById('eventDate').value || null;
         }
 
-        // 이미지 저장 (대표 1장 + 배열)
         if(imageUrls.length>0){
           payload.imageUrls = imageUrls;
           payload.imageUrl  = imageUrls[0];
@@ -288,7 +284,7 @@
       }
     });
 
-    // 🧩 수정 / 삭제 탭
+    // 🧩 수정 / 삭제 탭 (행사일 수정 추가)
     editSection.innerHTML=`
       <h2>게시글 수정 / 삭제</h2>
       <div class="row">
@@ -305,6 +301,12 @@
         <h3>게시글 수정</h3>
         <input id="editTitle" class="input" placeholder="제목" />
         <textarea id="editContent" class="input" rows="5" placeholder="내용"></textarea>
+
+        <!-- ▶ 행사일 수정(이 글이 event일 때만 표시) -->
+        <div id="editEventWrap" class="row hidden">
+          <label class="label">행사일</label>
+          <input id="editEventDate" class="input" type="date" />
+        </div>
 
         <div class="muted">현재 대표 이미지 미리보기</div>
         <div id="previewWrap"></div>
@@ -331,6 +333,11 @@
     const editFile=document.getElementById('editFile');
     const previewWrap=document.getElementById('previewWrap');
     const editMsg=document.getElementById('editMsg');
+
+    // ▶ 행사일 요소 refs
+    const editEventWrap=document.getElementById('editEventWrap');
+    const editEventDate=document.getElementById('editEventDate');
+
     let currentEditId=null;
     let currentDocCache=null;
 
@@ -369,6 +376,17 @@
           editTitle.value=data.title||''; editContent.value=data.content||'';
           previewWrap.innerHTML = data.imageUrl ? `<img src="${data.imageUrl}">` : '<div class="muted">이미지 없음</div>';
           editImages.value=''; editFile.value='';
+
+          // ▶ 행사일 UI 토글 + 값 바인딩
+          if(data.category==='event'){
+            editEventWrap.classList.remove('hidden');
+            // 문자열(YYYY-MM-DD)로 저장되어 있으니 그대로 바인딩
+            editEventDate.value = data.eventDate || '';
+          } else {
+            editEventWrap.classList.add('hidden');
+            editEventDate.value = '';
+          }
+
           editForm.classList.remove('hidden');
           window.scrollTo({top:editForm.offsetTop,behavior:'smooth'});
         });
@@ -408,10 +426,14 @@
       }
 
       const payload={ title, content, updatedAt:serverTimestamp() };
-      // 이미지/파일만 변경된 경우에도 merge 되도록 선택적 추가
       payload.imageUrls = imageUrls;
       payload.imageUrl  = imageUrl;
       payload.fileUrl   = fileUrl;
+
+      // ▶ 행사일 저장 (이 글이 event일 때만)
+      if(currentDocCache?.category === 'event'){
+        payload.eventDate = editEventDate.value || null;
+      }
 
       await updateDoc(doc(db,'posts',currentEditId),payload);
       editMsg.textContent='수정 완료!';
