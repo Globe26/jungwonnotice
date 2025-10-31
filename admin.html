@@ -21,6 +21,7 @@
       border-radius: 8px;
       margin-bottom: 10px;
     }
+    .hidden { display: none; }
   </style>
 </head>
 <body>
@@ -71,6 +72,18 @@
         </select>
       </div>
 
+      <!-- ✅ 수행평가 과목 드롭다운 복구 -->
+      <div id="subjectWrap" class="row hidden">
+        <label class="label">과목</label>
+        <select id="subjectSelect" class="select">
+          <option>국어</option><option>수학</option><option>영어</option>
+          <option>통합사회</option><option>통합과학</option><option>한국사</option>
+          <option>기술가정</option><option>한문</option><option>미술</option>
+          <option>체육</option><option>과학탐구실험</option><option>기타</option>
+        </select>
+      </div>
+
+      <!-- 반별 공지 대상 반 -->
       <div id="targetClassWrap" class="row hidden">
         <label class="label">대상 반</label>
         <select id="targetClass" class="select">
@@ -129,11 +142,11 @@
       else { gateMsg.textContent='비밀번호가 올바르지 않습니다.'; }
     });
 
-    // ✅ Base64 업로드 함수 (CORS 없음)
-    async function uploadIfNeeded(file, isImage=false) {
-      if (!file) return null;
-      if (isImage && file.type.startsWith("image/")) {
-        return await new Promise((resolve)=>{
+    // ✅ Base64 업로드 (이미지 압축 포함)
+    async function uploadIfNeeded(file,isImage=false){
+      if(!file)return null;
+      if(isImage&&file.type.startsWith("image/")){
+        return await new Promise(resolve=>{
           const reader=new FileReader();
           reader.onload=e=>{
             const img=new Image();
@@ -150,7 +163,7 @@
           };
           reader.readAsDataURL(file);
         });
-      } else {
+      }else{
         return await new Promise((resolve,reject)=>{
           const reader=new FileReader();
           reader.onload=e=>resolve(e.target.result);
@@ -160,40 +173,56 @@
       }
     }
 
+    // 🧭 카테고리별 입력 필드 표시 제어
+    const categorySel=document.getElementById('category');
+    const eventWrap=document.getElementById('eventWrap');
+    const subjectWrap=document.getElementById('subjectWrap');
+    const targetClassWrap=document.getElementById('targetClassWrap');
+    categorySel.addEventListener('change',()=>{
+      const v=categorySel.value;
+      eventWrap.classList.toggle('hidden',v!=='event');
+      subjectWrap.classList.toggle('hidden',v!=='assessment');
+      targetClassWrap.classList.toggle('hidden',v!=='class_notice');
+    });
+
     // 📝 게시글 작성
-    document.getElementById('publish').addEventListener('click', async ()=>{
+    document.getElementById('publish').addEventListener('click',async()=>{
       const btn=document.getElementById('publish');
       const msg=document.getElementById('pubMsg');
-      const category=document.getElementById('category').value;
+      const category=categorySel.value;
       const title=document.getElementById('title').value.trim();
       const content=document.getElementById('content').value.trim();
       if(!title){msg.textContent='제목은 필수입니다.';return;}
+      btn.disabled=true; msg.textContent='게시 중...';
 
-      btn.disabled=true;
-      msg.textContent='게시 중...';
-
-      try {
+      try{
         const image=document.getElementById('image').files[0];
         const file=document.getElementById('file').files[0];
-        const payload={
-          category,title,content,createdAt:serverTimestamp(),
-          targetClass:category==='class_notice'?document.getElementById('targetClass').value:'all'
-        };
-        if(category==='event')payload.eventDate=document.getElementById('eventDate').value;
+        const payload={category,title,content,createdAt:serverTimestamp()};
+        if(category==='assessment'){
+          payload.subject=document.getElementById('subjectSelect').value;
+        }
+        if(category==='class_notice'){
+          payload.targetClass=document.getElementById('targetClass').value;
+        }else{
+          payload.targetClass='all';
+        }
+        if(category==='event'){
+          payload.eventDate=document.getElementById('eventDate').value;
+        }
         payload.imageUrl=await uploadIfNeeded(image,true);
         payload.fileUrl=await uploadIfNeeded(file,false);
         await addDoc(collection(db,'posts'),payload);
         alert('게시 완료!');
-      } catch(err){
+      }catch(err){
         console.error(err);
         alert('게시 중 오류가 발생했습니다.');
-      } finally {
-        btn.disabled=false;
-        msg.textContent='';
+      }finally{
+        btn.disabled=false; msg.textContent='';
       }
     });
 
-    // 🧩 수정/삭제 탭
+    // 🧩 수정 / 삭제 탭
     editSection.innerHTML=`
       <h2>게시글 수정 / 삭제</h2>
       <div class="row">
