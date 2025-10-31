@@ -20,8 +20,12 @@
       max-width: 200px;
       border-radius: 8px;
       margin-bottom: 10px;
+      display:block;
     }
     .hidden { display: none; }
+    .row.gap-8 { gap: 8px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:#f0f0f0; font-size:12px; }
   </style>
 </head>
 <body>
@@ -72,7 +76,7 @@
         </select>
       </div>
 
-      <!-- ✅ 수행평가 과목 드롭다운 복구 -->
+      <!-- 수행평가 과목 -->
       <div id="subjectWrap" class="row hidden">
         <label class="label">과목</label>
         <select id="subjectSelect" class="select">
@@ -81,6 +85,15 @@
           <option>기술가정</option><option>한문</option><option>미술</option>
           <option>체육</option><option>과학탐구실험</option><option>기타</option>
         </select>
+      </div>
+
+      <!-- ✅ 수행평가 차시(일정) 복구 -->
+      <div id="assessmentWrap" class="hidden">
+        <div class="row">
+          <label class="label">일정(차시)</label>
+          <div id="scheduleList"></div>
+          <button id="addSchedule" class="btn ghost">차시 추가</button>
+        </div>
       </div>
 
       <!-- 반별 공지 대상 반 -->
@@ -101,7 +114,8 @@
         <input id="eventDate" class="input" type="date" />
       </div>
 
-      <div class="row"><label class="label">사진(선택)</label><input id="image" type="file" accept="image/*" /></div>
+      <!-- ✅ 여러 장 업로드 가능 -->
+      <div class="row"><label class="label">사진(선택, 여러 장)</label><input id="image" type="file" accept="image/*" multiple /></div>
       <div class="row"><label class="label">파일(선택)</label><input id="file" type="file" /></div>
 
       <button id="publish" class="btn primary">게시</button>
@@ -115,7 +129,10 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
     import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-analytics.js";
-    import { getFirestore, doc, setDoc, collection, addDoc, serverTimestamp, getDocs, deleteDoc, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
+    import {
+      getFirestore, doc, setDoc, collection, addDoc, serverTimestamp,
+      getDocs, deleteDoc, updateDoc, getDoc
+    } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyCjO0wwQQc8pDuQPurxVobABlKHAxDY2YA",
@@ -142,35 +159,43 @@
       else { gateMsg.textContent='비밀번호가 올바르지 않습니다.'; }
     });
 
-    // ✅ Base64 업로드 (이미지 압축 포함)
-    async function uploadIfNeeded(file,isImage=false){
-      if(!file)return null;
-      if(isImage&&file.type.startsWith("image/")){
-        return await new Promise(resolve=>{
-          const reader=new FileReader();
-          reader.onload=e=>{
-            const img=new Image();
-            img.onload=()=>{
-              const canvas=document.createElement('canvas');
-              const ctx=canvas.getContext('2d');
-              const scale=Math.min(800/img.width,800/img.height,1);
-              canvas.width=img.width*scale;
-              canvas.height=img.height*scale;
-              ctx.drawImage(img,0,0,canvas.width,canvas.height);
-              resolve(canvas.toDataURL('image/jpeg',0.7));
-            };
-            img.src=e.target.result;
+    // ✅ 이미지/파일 Base64 업로더 (이미지 압축)
+    async function toBase64(file){ // 일반 파일
+      if(!file) return null;
+      return await new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=e=>resolve(e.target.result);
+        reader.onerror=reject;
+        reader.readAsDataURL(file);
+      });
+    }
+    async function compressImage(file){ // 이미지 압축
+      return await new Promise((resolve)=>{
+        const reader=new FileReader();
+        reader.onload=e=>{
+          const img=new Image();
+          img.onload=()=>{
+            const canvas=document.createElement('canvas');
+            const ctx=canvas.getContext('2d');
+            const scale=Math.min(800/img.width,800/img.height,1);
+            canvas.width=img.width*scale;
+            canvas.height=img.height*scale;
+            ctx.drawImage(img,0,0,canvas.width,canvas.height);
+            resolve(canvas.toDataURL('image/jpeg',0.7));
           };
-          reader.readAsDataURL(file);
-        });
-      }else{
-        return await new Promise((resolve,reject)=>{
-          const reader=new FileReader();
-          reader.onload=e=>resolve(e.target.result);
-          reader.onerror=reject;
-          reader.readAsDataURL(file);
-        });
+          img.src=e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+    async function uploadManyImages(fileList){
+      if(!fileList || fileList.length===0) return [];
+      const files=[...fileList].slice(0,10); // 안전상 최대 10장 제한
+      const out=[];
+      for(const f of files){
+        if(f.type.startsWith('image/')) out.push(await compressImage(f));
       }
+      return out;
     }
 
     // 🧭 카테고리별 입력 필드 표시 제어
@@ -178,12 +203,34 @@
     const eventWrap=document.getElementById('eventWrap');
     const subjectWrap=document.getElementById('subjectWrap');
     const targetClassWrap=document.getElementById('targetClassWrap');
-    categorySel.addEventListener('change',()=>{
+    const assessmentWrap=document.getElementById('assessmentWrap');
+    function refreshVisibility(){
       const v=categorySel.value;
       eventWrap.classList.toggle('hidden',v!=='event');
       subjectWrap.classList.toggle('hidden',v!=='assessment');
+      assessmentWrap.classList.toggle('hidden',v!=='assessment');
       targetClassWrap.classList.toggle('hidden',v!=='class_notice');
-    });
+    }
+    categorySel.addEventListener('change',refreshVisibility);
+    refreshVisibility();
+
+    // ✅ 수행평가 차시 UI
+    const scheduleList=document.getElementById('scheduleList');
+    let scheduleN=0;
+    function renderScheduleItem(n,text=''){
+      const row=document.createElement('div');
+      row.className='row gap-8';
+      row.innerHTML=`
+        <div class="mono" style="min-width:64px">${n}차시 :</div>
+        <input class="input flex1" data-n="${n}" placeholder="예: 보고서 작성 / 발표 / 퀴즈" value="${text}" />
+        <button class="btn ghost" data-remove="${n}">삭제</button>`;
+      scheduleList.appendChild(row);
+      row.querySelector('[data-remove]').addEventListener('click',()=>row.remove());
+    }
+    function addSchedule(){ scheduleN+=1; renderScheduleItem(scheduleN); }
+    document.getElementById('addSchedule').addEventListener('click', addSchedule);
+    // 기본 1개
+    addSchedule();
 
     // 📝 게시글 작성
     document.getElementById('publish').addEventListener('click',async()=>{
@@ -196,11 +243,21 @@
       btn.disabled=true; msg.textContent='게시 중...';
 
       try{
-        const image=document.getElementById('image').files[0];
+        // 이미지 여러 장
+        const imageFiles=document.getElementById('image').files;
+        const imageUrls=await uploadManyImages(imageFiles);
+        // 첨부 파일(단일, 선택)
         const file=document.getElementById('file').files[0];
+        const fileUrl=await toBase64(file);
+
         const payload={category,title,content,createdAt:serverTimestamp()};
         if(category==='assessment'){
           payload.subject=document.getElementById('subjectSelect').value;
+          // 차시 수집
+          const inputs=[...scheduleList.querySelectorAll('input[data-n]')];
+          const schedules=inputs.map(inp=>({ n:Number(inp.dataset.n), text:inp.value.trim() }))
+                                .filter(it=>it.text!==''||it.n); // 비어도 n 보존
+          payload.schedules = schedules.length? schedules : [{n:1,text:''}];
         }
         if(category==='class_notice'){
           payload.targetClass=document.getElementById('targetClass').value;
@@ -208,10 +265,19 @@
           payload.targetClass='all';
         }
         if(category==='event'){
-          payload.eventDate=document.getElementById('eventDate').value;
+          payload.eventDate=document.getElementById('eventDate').value || null;
         }
-        payload.imageUrl=await uploadIfNeeded(image,true);
-        payload.fileUrl=await uploadIfNeeded(file,false);
+
+        // 이미지 저장 (대표 1장 + 배열)
+        if(imageUrls.length>0){
+          payload.imageUrls = imageUrls;
+          payload.imageUrl  = imageUrls[0];
+        } else {
+          payload.imageUrls = [];
+          payload.imageUrl  = null;
+        }
+        payload.fileUrl = fileUrl || null;
+
         await addDoc(collection(db,'posts'),payload);
         alert('게시 완료!');
       }catch(err){
@@ -239,9 +305,17 @@
         <h3>게시글 수정</h3>
         <input id="editTitle" class="input" placeholder="제목" />
         <textarea id="editContent" class="input" rows="5" placeholder="내용"></textarea>
+
+        <div class="muted">현재 대표 이미지 미리보기</div>
         <div id="previewWrap"></div>
-        <input id="editImage" type="file" accept="image/*" />
-        <input id="editFile" type="file" />
+
+        <div class="row"><label class="label">새 이미지(여러 장 선택 시 교체)</label>
+          <input id="editImages" type="file" accept="image/*" multiple />
+        </div>
+        <div class="row"><label class="label">새 파일(선택)</label>
+          <input id="editFile" type="file" />
+        </div>
+
         <button id="saveEdit" class="btn primary">수정 저장</button>
         <button id="cancelEdit" class="btn ghost">취소</button>
         <div id="editMsg" class="muted"></div>
@@ -253,11 +327,12 @@
     const editForm=document.getElementById('editForm');
     const editTitle=document.getElementById('editTitle');
     const editContent=document.getElementById('editContent');
-    const editImage=document.getElementById('editImage');
+    const editImages=document.getElementById('editImages');
     const editFile=document.getElementById('editFile');
     const previewWrap=document.getElementById('previewWrap');
     const editMsg=document.getElementById('editMsg');
     let currentEditId=null;
+    let currentDocCache=null;
 
     editCategory.addEventListener('change',async()=>{
       postList.innerHTML='<p>로딩 중...</p>';
@@ -273,9 +348,11 @@
       filtered.forEach(d=>{
         const item=document.createElement('div');
         item.className='card';
+        const preview = d.imageUrl ? `<img src="${d.imageUrl}" style="max-width:120px;border-radius:6px;margin:6px 0;">` : '';
         item.innerHTML=`
           <b>${d.title}</b>
-          <small>${d.content.substring(0,60)}...</small>
+          <small>${(d.content||'').substring(0,60)}...</small>
+          ${preview}
           <div style="margin-top:5px;">
             <button class="btn small" data-edit="${d.id}">수정</button>
             <button class="btn ghost small" data-del="${d.id}">삭제</button>
@@ -283,17 +360,21 @@
         postList.appendChild(item);
       });
 
+      // 수정
       postList.querySelectorAll('[data-edit]').forEach(btn=>{
         btn.addEventListener('click',async()=>{
-          const id=btn.dataset.edit;currentEditId=id;
-          const snap=await getDoc(doc(db,'posts',id));const data=snap.data();
-          editTitle.value=data.title||'';editContent.value=data.content||'';
-          previewWrap.innerHTML=data.imageUrl?`<img src="${data.imageUrl}">`:''; 
+          const id=btn.dataset.edit; currentEditId=id;
+          const snap=await getDoc(doc(db,'posts',id));
+          const data=snap.data(); currentDocCache=data||{};
+          editTitle.value=data.title||''; editContent.value=data.content||'';
+          previewWrap.innerHTML = data.imageUrl ? `<img src="${data.imageUrl}">` : '<div class="muted">이미지 없음</div>';
+          editImages.value=''; editFile.value='';
           editForm.classList.remove('hidden');
           window.scrollTo({top:editForm.offsetTop,behavior:'smooth'});
         });
       });
 
+      // 삭제
       postList.querySelectorAll('[data-del]').forEach(btn=>{
         btn.addEventListener('click',async()=>{
           const id=btn.dataset.del;
@@ -310,11 +391,28 @@
       if(!currentEditId)return;
       const title=editTitle.value.trim();
       const content=editContent.value.trim();
-      const img=await uploadIfNeeded(editImage.files[0],true);
-      const file=await uploadIfNeeded(editFile.files[0],false);
-      const payload={title,content,updatedAt:serverTimestamp()};
-      if(img)payload.imageUrl=img;
-      if(file)payload.fileUrl=file;
+
+      // 새 이미지 선택시 교체, 아니면 기존 유지
+      let imageUrls = currentDocCache?.imageUrls || [];
+      let imageUrl  = currentDocCache?.imageUrl  ?? null;
+
+      if(editImages.files && editImages.files.length>0){
+        imageUrls = await uploadManyImages(editImages.files);
+        imageUrl  = imageUrls.length? imageUrls[0] : null;
+      }
+
+      // 새 파일 선택시 교체, 아니면 기존 유지
+      let fileUrl = currentDocCache?.fileUrl ?? null;
+      if(editFile.files && editFile.files[0]){
+        fileUrl = await toBase64(editFile.files[0]);
+      }
+
+      const payload={ title, content, updatedAt:serverTimestamp() };
+      // 이미지/파일만 변경된 경우에도 merge 되도록 선택적 추가
+      payload.imageUrls = imageUrls;
+      payload.imageUrl  = imageUrl;
+      payload.fileUrl   = fileUrl;
+
       await updateDoc(doc(db,'posts',currentEditId),payload);
       editMsg.textContent='수정 완료!';
       editForm.classList.add('hidden');
