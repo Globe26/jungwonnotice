@@ -9,11 +9,12 @@
   <style>
     .card-img {max-width:100%;border-radius:8px;margin-top:8px;cursor:pointer;}
     .img-carousel {position:relative;max-width:100%;margin-top:8px;}
-    .img-carousel img{width:100%;border-radius:8px;}
+    .img-carousel img{width:100%;border-radius:8px;cursor:pointer;}
     .img-carousel button{
       position:absolute;top:50%;transform:translateY(-50%);
       background:rgba(0,0,0,0.5);color:white;border:none;
       padding:6px 10px;border-radius:50%;cursor:pointer;
+      opacity:0.8;
     }
     .img-prev{left:8px;} .img-next{right:8px;}
     .img-count{position:absolute;bottom:5px;right:10px;
@@ -61,7 +62,6 @@
 
   <main class="container" id="list"></main>
 
-  <!-- 이미지 모달 -->
   <div id="imgModal" class="modal hidden">
     <div class="modal-backdrop" id="modalBackdrop"></div>
     <div class="modal-content">
@@ -82,38 +82,32 @@
       messagingSenderId: "962425903739",
       appId: "1:962425903739:web:de0c905dc285f566d3a0de",
     };
-
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    const tabs=document.getElementById('categoryTabs');
     const list=document.getElementById('list');
+    const tabs=document.getElementById('categoryTabs');
     const classSelect=document.getElementById('classSelect');
     const searchInput=document.getElementById('searchInput');
-    const assessmentFilter=document.getElementById('assessmentFilter');
     const subjectSelect=document.getElementById('subjectSelect');
+    const assessmentFilter=document.getElementById('assessmentFilter');
     let currentCat='general';
     let classPwCache={};
 
-    function linkify(text){
-      const urlRegex=/(https?:\/\/[^\s]+)/g;
-      return text.replace(urlRegex,'<a href="$1" target="_blank">$1</a>');
-    }
+    function linkify(t){return t.replace(/(https?:\/\/[^\s]+)/g,'<a href="$1" target="_blank">$1</a>');}
 
     async function compressImage(file){
       if(!file) return null;
-      return await new Promise(resolve=>{
+      return new Promise(r=>{
         const reader=new FileReader();
         reader.onload=e=>{
           const img=new Image();
           img.onload=()=>{
-            const canvas=document.createElement('canvas');
-            const ctx=canvas.getContext('2d');
-            const scale=Math.min(800/img.width,800/img.height,1);
-            canvas.width=img.width*scale;
-            canvas.height=img.height*scale;
-            ctx.drawImage(img,0,0,canvas.width,canvas.height);
-            resolve(canvas.toDataURL('image/jpeg',0.7));
+            const c=document.createElement('canvas'),ctx=c.getContext('2d');
+            const s=Math.min(800/img.width,800/img.height,1);
+            c.width=img.width*s;c.height=img.height*s;
+            ctx.drawImage(img,0,0,c.width,c.height);
+            r(c.toDataURL('image/jpeg',0.7));
           };
           img.src=e.target.result;
         };
@@ -121,12 +115,13 @@
       });
     }
 
-    const modal=document.getElementById('imgModal');
-    const modalImg=document.getElementById('modalImg');
-    document.getElementById('modalBackdrop').addEventListener('click',()=>modal.classList.add('hidden'));
-    document.getElementById('modalClose').addEventListener('click',()=>modal.classList.add('hidden'));
-    function openImg(url){ modalImg.src=url; modal.classList.remove('hidden'); }
+    const modal=document.getElementById('imgModal'),modalImg=document.getElementById('modalImg');
+    document.getElementById('modalBackdrop').onclick=()=>modal.classList.add('hidden');
+    document.getElementById('modalClose').onclick=()=>modal.classList.add('hidden');
+    function openImg(url){modalImg.src=url;modal.classList.remove('hidden');}
     window.__openImg=openImg;
+
+    function fmtDate(i){if(!i)return'';const d=new Date(i);return String(d.getFullYear()).slice(2)+'.'+String(d.getMonth()+1).padStart(2,'0')+'.'+String(d.getDate()).padStart(2,'0');}
 
     function setActiveTab(cat){
       [...tabs.querySelectorAll('.tab')].forEach(b=>b.classList.toggle('active',b.dataset.cat===cat));
@@ -134,45 +129,21 @@
       assessmentFilter.classList.toggle('hidden',cat!=="assessment");
       render();
     }
-    tabs.addEventListener('click',(e)=>{
-      const b=e.target.closest('button[data-cat]');
-      if(!b)return;
-      setActiveTab(b.dataset.cat);
-    });
-    classSelect.addEventListener('change',render);
-    searchInput.addEventListener('input',render);
-    subjectSelect.addEventListener('change',render);
+    tabs.onclick=e=>{const b=e.target.closest('button[data-cat]');if(b)setActiveTab(b.dataset.cat);};
+    classSelect.onchange=render;searchInput.oninput=render;subjectSelect.onchange=render;
 
     async function fetchPosts(){
-      const postsRef=collection(db,'posts');
-      const cls=classSelect.value;
+      const cls=classSelect.value;const postsRef=collection(db,'posts');
       let q;
-      if(currentCat==='class_notice'){
-        q=query(postsRef,where('category','==','class_notice'),where('targetClass','==',cls),orderBy('createdAt','desc'));
-      }else if(currentCat==='general'){
-        q=query(postsRef,where('category','==','general'),orderBy('createdAt','desc'));
-      }else if(currentCat==='event'){
-        q=query(postsRef,where('category','==','event'),orderBy('eventDate','asc'));
-      }else if(currentCat==='assessment'){
-        if(subjectSelect.value==='all'){
-          q=query(postsRef,where('category','==','assessment'),orderBy('createdAt','desc'));
-        }else{
-          q=query(postsRef,where('category','==','assessment'),where('subject','==',subjectSelect.value),orderBy('createdAt','desc'));
-        }
+      if(currentCat==='class_notice') q=query(postsRef,where('category','==','class_notice'),where('targetClass','==',cls),orderBy('createdAt','desc'));
+      else if(currentCat==='general') q=query(postsRef,where('category','==','general'),orderBy('createdAt','desc'));
+      else if(currentCat==='event') q=query(postsRef,where('category','==','event'),orderBy('eventDate','asc'));
+      else if(currentCat==='assessment'){
+        if(subjectSelect.value==='all') q=query(postsRef,where('category','==','assessment'),orderBy('createdAt','desc'));
+        else q=query(postsRef,where('category','==','assessment'),where('subject','==',subjectSelect.value),orderBy('createdAt','desc'));
       }
-      const snap=await getDocs(q);
-      return snap.docs.map(d=>({id:d.id,...d.data()}));
+      const s=await getDocs(q);return s.docs.map(d=>({id:d.id,...d.data()}));
     }
-
-    async function attachClassSchedules(postId,base){
-      const cls=classSelect.value;
-      const ref=doc(db,`posts/${postId}/classSchedules/${cls}`);
-      const s=await getDoc(ref);
-      base.classItems=s.exists()?s.data().items||[]:[];
-      return base;
-    }
-
-    function matchSchedule(n,classItems){return classItems.find(it=>String(it.n)===String(n));}
 
     async function verifyClassPw(){
       const cls=classSelect.value;
@@ -180,66 +151,48 @@
       const pw=prompt(`${cls}반 비밀번호를 입력하세요`);
       if(!pw)return false;
       const ref=doc(db,'classPasswords',cls);
-      const snap=await getDoc(ref);
-      if(!snap.exists()||snap.data().password!==pw){alert('비밀번호가 올바르지 않습니다.');return false;}
-      classPwCache[cls]=true;
-      return true;
+      const s=await getDoc(ref);
+      if(!s.exists()||s.data().password!==pw){alert('비밀번호가 올바르지 않습니다.');return false;}
+      classPwCache[cls]=true;return true;
     }
 
-    function fmtDate(iso){
-      if(!iso)return'';
-      const d=new Date(iso);
-      const yy=String(d.getFullYear()).slice(2);
-      const mm=String(d.getMonth()+1).padStart(2,'0');
-      const dd=String(d.getDate()).padStart(2,'0');
-      return `${yy}.${mm}.${dd}`;
+    function buildCarousel(p,imgs){
+      const id='c'+p.id; 
+      let h='<div class="img-carousel" id="'+id+'"><img src="'+imgs[0]+'"><button class="img-prev">‹</button><button class="img-next">›</button><div class="img-count">1 / '+imgs.length+'</div></div>';
+      requestAnimationFrame(()=>{
+        const box=document.getElementById(id);if(!box)return;
+        const img=box.querySelector('img'),prev=box.querySelector('.img-prev'),next=box.querySelector('.img-next'),count=box.querySelector('.img-count');
+        let i=0;
+        function update(){
+          img.src=imgs[i];
+          prev.style.display=i===0?'none':'block';
+          next.style.display=i===imgs.length-1?'none':'block';
+          count.textContent=(i+1)+' / '+imgs.length;
+        }
+        prev.onclick=()=>{i=Math.max(0,i-1);update();};
+        next.onclick=()=>{i=Math.min(imgs.length-1,i+1);update();};
+        img.onclick=()=>openImg(imgs[i]);
+        update();
+      });
+      return h;
     }
 
     function renderImages(p){
-      const imgs=Array.isArray(p.imageUrls)&&p.imageUrls.length>0?p.imageUrls:[p.imageUrl].filter(Boolean);
-      if(!imgs.length)return'';
-      if(imgs.length===1){
-        return '<img class="card-img" src="'+imgs[0]+'" alt="img" onclick="window.__openImg(\''+imgs[0].replace(/'/g,"%27")+'\')">';
-      }
-      const id='carousel-'+p.id;
-      let out='<div class="img-carousel" id="'+id+'">'+
-              '<img src="'+imgs[0]+'" alt="img">'+
-              '<button class="img-prev">‹</button>'+
-              '<button class="img-next">›</button>'+
-              '<div class="img-count">1 / '+imgs.length+'</div></div>'+
-              '<script>(function(){const box=document.getElementById("'+id+'");const img=box.querySelector("img");const prev=box.querySelector(".img-prev");const next=box.querySelector(".img-next");const count=box.querySelector(".img-count");const arr='+JSON.stringify(imgs)+';let i=0;function update(){img.src=arr[i];count.textContent=(i+1)+" / "+arr.length;}prev.onclick=()=>{i=(i-1+arr.length)%arr.length;update();};next.onclick=()=>{i=(i+1)%arr.length;update();};img.onclick=()=>window.__openImg(arr[i]);})();<\/script>';
-      return out;
+      const imgs=Array.isArray(p.imageUrls)&&p.imageUrls.length?p.imageUrls:[p.imageUrl].filter(Boolean);
+      if(!imgs.length)return'';if(imgs.length===1)return'<img class="card-img" src="'+imgs[0]+'" onclick="window.__openImg(\''+imgs[0]+'\')">';
+      return buildCarousel(p,imgs);
     }
 
     function card(p){
       const q=searchInput.value.trim().toLowerCase();
-      if(q){
-        const hay=(p.title||'')+' '+(p.content||'');
-        if(!hay.toLowerCase().includes(q))return'';
-      }
+      if(q&&!(`${p.title||''} ${p.content||''}`.toLowerCase().includes(q)))return'';
       const imgs=renderImages(p);
       const file=p.fileUrl?'<a class="btn" href="'+p.fileUrl+'" download>파일 다운로드</a>':'';
-      if(p.category==='event'){
-        return '<article class="card"><h3>'+p.title+'</h3><div class="muted">행사일: '+fmtDate(p.eventDate)+'</div><p>'+linkify(p.content||'').replace(/\n/g,'<br/>')+'</p>'+imgs+file+'</article>';
-      }
+      if(p.category==='event') return '<article class="card"><h3>'+p.title+'</h3><div class="muted">행사일: '+fmtDate(p.eventDate)+'</div><p>'+linkify(p.content||'').replace(/\n/g,'<br/>')+'</p>'+imgs+file+'</article>';
       if(p.category==='general'||p.category==='class_notice'){
-        let base='<article class="card" data-id="'+p.id+'"><h3>'+p.title+'</h3><p>'+linkify(p.content||'').replace(/\n/g,'<br/>')+'</p>'+imgs;
-        if(currentCat==='class_notice'){
-          base+='<div class="row end"><button class="btn small" data-edit="'+p.id+'">수정</button><button class="btn ghost small" data-del="'+p.id+'">삭제</button></div>';
-        }
-        base+='</article>';
-        return base;
-      }
-      if(p.category==='assessment'){
-        const schedules=Array.isArray(p.schedules)?p.schedules:[];
-        let lines='';
-        for(const sc of schedules){
-          const hit=matchSchedule(sc.n,p.classItems||[]);
-          const right=hit?'<span class="pill">'+fmtDate(hit.date)+' '+hit.period+'교시</span>':'';
-          lines+='<div class="mono">'+sc.n+'차시 : '+(sc.text||'')+' '+right+'</div>';
-        }
-        const editUrl='./schedule-edit.html?post='+p.id;
-        return '<article class="card"><h3>'+p.title+'</h3><p>'+linkify(p.content||'').replace(/\n/g,'<br/>')+'</p>'+imgs+'<div class="muted">일정</div><div>'+lines+'</div><div class="row end"><a class="btn" href="'+editUrl+'">일정 수정</a>'+file+'</div></article>';
+        let h='<article class="card" data-id="'+p.id+'"><h3>'+p.title+'</h3><p>'+linkify(p.content||'').replace(/\n/g,'<br/>')+'</p>'+imgs;
+        if(currentCat==='class_notice')h+='<div class="row end"><button class="btn small" data-edit="'+p.id+'">수정</button><button class="btn ghost small" data-del="'+p.id+'">삭제</button></div>';
+        return h+'</article>';
       }
       return'';
     }
@@ -247,66 +200,25 @@
     async function render(){
       list.innerHTML='<div class="muted">불러오는 중...</div>';
       const posts=await fetchPosts();
-      if(currentCat==='assessment'){
-        for(let i=0;i<posts.length;i++){
-          posts[i]=await attachClassSchedules(posts[i].id,posts[i]);
-        }
-      }
       let html='';
-      if(currentCat==='class_notice'){
-        html+='<div id="newNoticeBox"><h3>새 반별 공지 작성</h3><input id="newTitle" class="input" placeholder="제목" /><textarea id="newContent" class="input" rows="4" placeholder="내용"></textarea><div class="row"><label>사진(선택, 여러 장)</label><input id="newImage" type="file" accept="image/*" multiple></div><button id="newSubmit" class="btn primary">게시</button></div>';
-      }
-      for(const p of posts){html+=card(p);}
+      if(currentCat==='class_notice')html+='<div id="newNoticeBox"><h3>새 반별 공지 작성</h3><input id="newTitle" class="input" placeholder="제목"/><textarea id="newContent" class="input" rows="4" placeholder="내용"></textarea><div class="row"><label>사진(여러 장)</label><input id="newImage" type="file" accept="image/*" multiple></div><button id="newSubmit" class="btn primary">게시</button></div>';
+      posts.forEach(p=>html+=card(p));
       list.innerHTML=html||'<div class="empty">게시물이 없습니다.</div>';
 
       if(currentCat==='class_notice'){
-        document.getElementById('newSubmit').addEventListener('click',async()=>{
+        document.getElementById('newSubmit').onclick=async()=>{
           if(!await verifyClassPw())return;
           const title=document.getElementById('newTitle').value.trim();
           const content=document.getElementById('newContent').value.trim();
           const files=[...document.getElementById('newImage').files];
           if(!title||!content){alert('제목과 내용을 입력하세요');return;}
-          const imgs=[];
-          for(const f of files){const d=await compressImage(f);if(d)imgs.push(d);}
-          await addDoc(collection(db,'posts'),{
-            title,content,category:'class_notice',targetClass:classSelect.value,
-            imageUrls:imgs,imageUrl:imgs[0]||null,createdAt:serverTimestamp()
-          });
+          const imgs=[];for(const f of files){const d=await compressImage(f);if(d)imgs.push(d);}
+          await addDoc(collection(db,'posts'),{title,content,category:'class_notice',targetClass:classSelect.value,imageUrls:imgs,imageUrl:imgs[0]||null,createdAt:serverTimestamp()});
           alert('게시 완료!');render();
-        });
-
-        list.querySelectorAll('[data-edit]').forEach(btn=>{
-          btn.addEventListener('click',async()=>{
-            if(!await verifyClassPw())return;
-            const id=btn.dataset.edit;
-            const card=btn.closest('.card');
-            const t=card.querySelector('h3').textContent;
-            const c=card.querySelector('p').textContent;
-            card.innerHTML='<div class="edit-box"><input id="editTitle" class="input" value="'+t+'"><textarea id="editContent" class="input">'+c+'</textarea><div class="row"><label>사진(선택, 여러 장)</label><input id="editImage" type="file" accept="image/*" multiple></div><button id="saveBtn" class="btn primary">저장</button><button id="cancelBtn" class="btn ghost">취소</button></div>';
-            card.querySelector('#saveBtn').addEventListener('click',async()=>{
-              const nt=card.querySelector('#editTitle').value.trim();
-              const nc=card.querySelector('#editContent').value.trim();
-              const files=[...card.querySelector('#editImage').files];
-              const imgs=[];
-              for(const f of files){const d=await compressImage(f);if(d)imgs.push(d);}
-              const payload={title:nt,content:nc,updatedAt:serverTimestamp()};
-              if(imgs.length){payload.imageUrls=imgs;payload.imageUrl=imgs[0];}
-              await updateDoc(doc(db,'posts',id),payload);
-              alert('수정 완료!');render();
-            });
-            card.querySelector('#cancelBtn').addEventListener('click',()=>render());
-          });
-        });
-
-        list.querySelectorAll('[data-del]').forEach(btn=>{
-          btn.addEventListener('click',async()=>{
-            if(!await verifyClassPw())return;
-            const id=btn.dataset.del;
-            if(confirm('정말 삭제하시겠습니까?')){
-              await deleteDoc(doc(db,'posts',id));
-              alert('삭제 완료!');render();
-            }
-          });
+        };
+        list.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
+          if(!await verifyClassPw())return;
+          const id=b.dataset.del;if(confirm('삭제하시겠습니까?')){await deleteDoc(doc(db,'posts',id));alert('삭제 완료!');render();}
         });
       }
     }
